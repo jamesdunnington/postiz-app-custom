@@ -272,54 +272,75 @@ export class PinterestProvider
       }) || []
     );
 
-    const { id: pId } = await (
-      await this.fetch('https://api.pinterest.com/v5/pins', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ...(postDetails?.[0]?.settings.link
-            ? { link: postDetails?.[0]?.settings.link }
-            : {}),
-          ...(postDetails?.[0]?.settings.title
-            ? { title: postDetails?.[0]?.settings.title }
-            : {}),
-          description: postDetails?.[0]?.message,
-          ...(postDetails?.[0]?.settings.dominant_color
-            ? { dominant_color: postDetails?.[0]?.settings.dominant_color }
-            : {}),
-          board_id: postDetails?.[0]?.settings.board,
-          media_source: mediaId
+    const response = await this.fetch('https://api.pinterest.com/v5/pins', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ...(postDetails?.[0]?.settings.link
+          ? { link: postDetails?.[0]?.settings.link }
+          : {}),
+        ...(postDetails?.[0]?.settings.title
+          ? { title: postDetails?.[0]?.settings.title }
+          : {}),
+        description: postDetails?.[0]?.message,
+        ...(postDetails?.[0]?.settings.dominant_color
+          ? { dominant_color: postDetails?.[0]?.settings.dominant_color }
+          : {}),
+        board_id: postDetails?.[0]?.settings.board,
+        media_source: mediaId
+          ? {
+              source_type: 'video_id',
+              media_id: mediaId,
+              cover_image_url: picture?.path,
+            }
+          : mapImages?.length === 1
+          ? mapImages[0].base64
             ? {
-                source_type: 'video_id',
-                media_id: mediaId,
-                cover_image_url: picture?.path,
+                source_type: 'image_base64',
+                content_type: 'image/jpeg',
+                data: mapImages[0].base64,
               }
-            : mapImages?.length === 1
-            ? mapImages[0].base64
-              ? {
-                  source_type: 'image_base64',
-                  content_type: 'image/jpeg',
-                  data: mapImages[0].base64,
-                }
-              : {
-                  source_type: 'image_url',
-                  url: mapImages[0].path,
-                }
             : {
-                source_type: 'multiple_image_base64',
-                items: mapImages
-                  .filter((img) => img.base64)
-                  .map((img) => ({ 
-                    content_type: 'image/jpeg',
-                    data: img.base64 
-                  })),
-              },
-        }),
-      })
-    ).json();
+                source_type: 'image_url',
+                url: mapImages[0].path,
+              }
+          : {
+              source_type: 'multiple_image_base64',
+              items: mapImages
+                .filter((img) => img.base64)
+                .map((img) => ({ 
+                  content_type: 'image/jpeg',
+                  data: img.base64 
+                })),
+            },
+      }),
+    });
+
+    const responseData = await response.json();
+    
+    // Log the full response for debugging
+    if (!response.ok || !responseData.id) {
+      Sentry.captureException(new Error('Pinterest API error'), {
+        extra: {
+          status: response.status,
+          statusText: response.statusText,
+          responseData: responseData,
+          requestData: {
+            link: postDetails?.[0]?.settings.link,
+            title: postDetails?.[0]?.settings.title,
+            description: postDetails?.[0]?.message,
+            board_id: postDetails?.[0]?.settings.board,
+            media_source_type: mediaId ? 'video_id' : (mapImages?.length === 1 ? 'image_base64' : 'multiple_image_base64'),
+          },
+        },
+      });
+      throw new Error(`Pinterest API error: ${JSON.stringify(responseData)}`);
+    }
+
+    const { id: pId } = responseData;
 
     return [
       {
