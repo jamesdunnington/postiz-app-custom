@@ -252,9 +252,22 @@ export class PinterestProvider
             responseType: 'arraybuffer',
           });
           const base64Image = Buffer.from(response.data).toString('base64');
+          
+          // Detect content type from response headers or URL extension
+          let contentType = response.headers['content-type'] || 'image/jpeg';
+          if (!contentType.startsWith('image/')) {
+            // Fallback to detecting from URL extension
+            const ext = m.path.toLowerCase().split('.').pop();
+            if (ext === 'png') contentType = 'image/png';
+            else if (ext === 'gif') contentType = 'image/gif';
+            else if (ext === 'webp') contentType = 'image/webp';
+            else contentType = 'image/jpeg';
+          }
+          
           return {
             path: m.path,
             base64: base64Image,
+            contentType: contentType,
           };
         } catch (error) {
           // Fallback to URL if base64 conversion fails
@@ -267,6 +280,7 @@ export class PinterestProvider
           return {
             path: m.path,
             base64: null,
+            contentType: 'image/jpeg',
           };
         }
       }) || []
@@ -300,7 +314,7 @@ export class PinterestProvider
           ? mapImages[0].base64
             ? {
                 source_type: 'image_base64',
-                content_type: 'image/jpeg',
+                content_type: mapImages[0].contentType,
                 data: mapImages[0].base64,
               }
             : {
@@ -312,7 +326,7 @@ export class PinterestProvider
               items: mapImages
                 .filter((img) => img.base64)
                 .map((img) => ({ 
-                  content_type: 'image/jpeg',
+                  content_type: img.contentType,
                   data: img.base64 
                 })),
             },
@@ -323,21 +337,28 @@ export class PinterestProvider
     
     // Log the full response for debugging
     if (!response.ok || !responseData.id) {
-      Sentry.captureException(new Error('Pinterest API error'), {
-        extra: {
-          status: response.status,
-          statusText: response.statusText,
-          responseData: responseData,
-          requestData: {
-            link: postDetails?.[0]?.settings.link,
-            title: postDetails?.[0]?.settings.title,
-            description: postDetails?.[0]?.message,
-            board_id: postDetails?.[0]?.settings.board,
-            media_source_type: mediaId ? 'video_id' : (mapImages?.length === 1 ? 'image_base64' : 'multiple_image_base64'),
-          },
+      const errorDetails = {
+        status: response.status,
+        statusText: response.statusText,
+        responseData: responseData,
+        requestData: {
+          link: postDetails?.[0]?.settings.link,
+          title: postDetails?.[0]?.settings.title,
+          description: postDetails?.[0]?.message,
+          board_id: postDetails?.[0]?.settings.board,
+          media_source_type: mediaId ? 'video_id' : (mapImages?.length === 1 ? 'image_base64' : 'multiple_image_base64'),
+          base64_size: mapImages?.length === 1 && mapImages[0].base64 ? mapImages[0].base64.length : 
+                       mapImages?.filter(img => img.base64).reduce((sum, img) => sum + img.base64.length, 0),
         },
+      };
+      
+      console.error('[Pinterest API Error]', JSON.stringify(errorDetails, null, 2));
+      
+      Sentry.captureException(new Error('Pinterest API error'), {
+        extra: errorDetails,
       });
-      throw new Error(`Pinterest API error: ${JSON.stringify(responseData)}`);
+      
+      throw new Error(`Pinterest API error (${response.status}): ${JSON.stringify(responseData)}`);
     }
 
     const { id: pId } = responseData;
