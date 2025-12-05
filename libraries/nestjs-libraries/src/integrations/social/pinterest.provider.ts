@@ -301,6 +301,7 @@ export class PinterestProvider
             ? mapImages[0].base64
               ? {
                   source_type: 'image_base64',
+                  content_type: 'image/jpeg',
                   data: mapImages[0].base64,
                 }
               : {
@@ -311,7 +312,10 @@ export class PinterestProvider
                 source_type: 'multiple_image_base64',
                 items: mapImages
                   .filter((img) => img.base64)
-                  .map((img) => ({ data: img.base64 })),
+                  .map((img) => ({ 
+                    content_type: 'image/jpeg',
+                    data: img.base64 
+                  })),
               },
         }),
       })
