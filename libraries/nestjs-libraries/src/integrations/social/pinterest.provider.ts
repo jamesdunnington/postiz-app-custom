@@ -14,6 +14,7 @@ import { SocialAbstract } from '@gitroom/nestjs-libraries/integrations/social.ab
 import dayjs from 'dayjs';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
+import * as Sentry from '@sentry/nextjs';
 
 @Rules(
   'Pinterest requires at least one media, if posting a video, you must have two attachment, one for video, one for the cover picture, When posting a video, there can be only one'
@@ -243,9 +244,33 @@ export class PinterestProvider
       mediaId = media_id;
     }
 
-    const mapImages = postDetails?.[0]?.media?.map((m) => ({
-      path: m.path,
-    }));
+    // Convert images to base64 for more reliable uploads
+    const mapImages = await Promise.all(
+      postDetails?.[0]?.media?.map(async (m) => {
+        try {
+          const response = await axios.get(m.path, {
+            responseType: 'arraybuffer',
+          });
+          const base64Image = Buffer.from(response.data).toString('base64');
+          return {
+            path: m.path,
+            base64: base64Image,
+          };
+        } catch (error) {
+          // Fallback to URL if base64 conversion fails
+          Sentry.captureException(error, {
+            extra: {
+              context: 'Pinterest image base64 conversion failed',
+              imagePath: m.path,
+            },
+          });
+          return {
+            path: m.path,
+            base64: null,
+          };
+        }
+      }) || []
+    );
 
     const { id: pId } = await (
       await this.fetch('https://api.pinterest.com/v5/pins', {
@@ -273,13 +298,20 @@ export class PinterestProvider
                 cover_image_url: picture?.path,
               }
             : mapImages?.length === 1
-            ? {
-                source_type: 'image_url',
-                url: mapImages?.[0]?.path,
-              }
+            ? mapImages[0].base64
+              ? {
+                  source_type: 'image_base64',
+                  data: mapImages[0].base64,
+                }
+              : {
+                  source_type: 'image_url',
+                  url: mapImages[0].path,
+                }
             : {
-                source_type: 'multiple_image_urls',
-                items: mapImages,
+                source_type: 'multiple_image_base64',
+                items: mapImages
+                  .filter((img) => img.base64)
+                  .map((img) => ({ data: img.base64 })),
               },
         }),
       })
@@ -318,39 +350,58 @@ export class PinterestProvider
       )
     ).json();
 
+    const today = dayjs().format('YYYY-MM-DD');
+    const yesterday = dayjs().subtract(1, 'day').format('YYYY-MM-DD');
+
     return daily_metrics.reduce(
-      (acc: any, item: any) => {
-        if (typeof item.metrics.PIN_CLICK_RATE !== 'undefined') {
+      (acc: any, item: any, index: number) => {
+        // Mark the latest 2 days as tentative (dotted lines on Pinterest)
+        const isTentative = item.date === today || item.date === yesterday;
+
+        if (typeof item.metrics.OUTBOUND_CLICK !== 'undefined') {
           acc[0].data.push({
             date: item.date,
-            total: item.metrics.PIN_CLICK_RATE,
+            total: item.metrics.OUTBOUND_CLICK,
+            tentative: isTentative,
           });
+        }
 
+        if (typeof item.metrics.IMPRESSION !== 'undefined') {
           acc[1].data.push({
             date: item.date,
             total: item.metrics.IMPRESSION,
+            tentative: isTentative,
           });
+        }
 
+        if (typeof item.metrics.PIN_CLICK !== 'undefined') {
           acc[2].data.push({
             date: item.date,
             total: item.metrics.PIN_CLICK,
+            tentative: isTentative,
           });
+        }
 
+        if (typeof item.metrics.ENGAGEMENT !== 'undefined') {
           acc[3].data.push({
             date: item.date,
             total: item.metrics.ENGAGEMENT,
+            tentative: isTentative,
           });
+        }
 
+        if (typeof item.metrics.SAVE !== 'undefined') {
           acc[4].data.push({
             date: item.date,
             total: item.metrics.SAVE,
+            tentative: isTentative,
           });
         }
 
         return acc;
       },
       [
-        { label: 'Pin click rate', data: [] as any[] },
+        { label: 'Outbound Clicks', data: [] as any[] },
         { label: 'Impressions', data: [] as any[] },
         { label: 'Pin Clicks', data: [] as any[] },
         { label: 'Engagement', data: [] as any[] },

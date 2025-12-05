@@ -42,7 +42,7 @@ export interface IAuthenticator {
 
 export interface AnalyticsData {
   label: string;
-  data: Array<{ total: string; date: string }>;
+  data: Array<{ total: string; date: string; tentative?: boolean }>;
   percentageChange: number;
 }
 

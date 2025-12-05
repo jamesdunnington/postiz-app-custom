@@ -5,6 +5,7 @@ export interface StarsList {
 export interface TotalList {
   total: number;
   date: string;
+  tentative?: boolean;
 }
 export interface ForksList {
   totalForks: number;

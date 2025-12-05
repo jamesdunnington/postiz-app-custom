@@ -73,6 +73,14 @@ export const ChartSocial: FC<{
             fill: true,
             // @ts-ignore
             data: list.map((row) => row.total),
+            // @ts-ignore
+            segment: {
+              borderDash: (ctx: any) => {
+                // Check if the current data point is tentative
+                const dataPoint = data[ctx.p0DataIndex];
+                return dataPoint?.tentative ? [5, 5] : undefined;
+              },
+            },
           },
         ],
       },
