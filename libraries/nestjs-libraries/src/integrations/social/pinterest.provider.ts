@@ -244,12 +244,13 @@ export class PinterestProvider
       mediaId = media_id;
     }
 
-    // Convert images to base64 for more reliable uploads
+    // Convert images to base64 for more reliable uploads, fall back to URL if base64 fails
     const mapImages = await Promise.all(
       postDetails?.[0]?.media?.map(async (m) => {
         try {
           const response = await axios.get(m.path, {
             responseType: 'arraybuffer',
+            timeout: 10000,
           });
           const base64Image = Buffer.from(response.data).toString('base64');
           
@@ -264,6 +265,8 @@ export class PinterestProvider
             else contentType = 'image/jpeg';
           }
           
+          console.log(`[Pinterest] Base64 encoded image: ${m.path}, size: ${base64Image.length} chars, type: ${contentType}`);
+          
           return {
             path: m.path,
             base64: base64Image,
@@ -271,6 +274,7 @@ export class PinterestProvider
           };
         } catch (error) {
           // Fallback to URL if base64 conversion fails
+          console.log('[Pinterest] Base64 conversion failed, using URL fallback:', m.path);
           Sentry.captureException(error, {
             extra: {
               context: 'Pinterest image base64 conversion failed',
