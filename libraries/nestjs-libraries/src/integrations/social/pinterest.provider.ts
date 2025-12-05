@@ -344,6 +344,7 @@ export class PinterestProvider
       const errorDetails = {
         status: response.status,
         statusText: response.statusText,
+        error_message: responseData.message || responseData.error || responseData.error_description || 'No error message provided',
         responseData: responseData,
         requestData: {
           link: postDetails?.[0]?.settings.link,
@@ -352,17 +353,18 @@ export class PinterestProvider
           board_id: postDetails?.[0]?.settings.board,
           media_source_type: mediaId ? 'video_id' : (mapImages?.length === 1 ? 'image_base64' : 'multiple_image_base64'),
           base64_size: mapImages?.length === 1 && mapImages[0].base64 ? mapImages[0].base64.length : 
-                       mapImages?.filter(img => img.base64).reduce((sum, img) => sum + img.base64.length, 0),
+                       mapImages?.filter(img => img.base64).reduce((sum, img) => sum + (img.base64?.length || 0), 0),
+          has_base64: mapImages?.some(img => img.base64),
         },
       };
       
       console.error('[Pinterest API Error]', JSON.stringify(errorDetails, null, 2));
       
-      Sentry.captureException(new Error('Pinterest API error'), {
+      Sentry.captureException(new Error(`Pinterest API error: ${errorDetails.error_message}`), {
         extra: errorDetails,
       });
       
-      throw new Error(`Pinterest API error (${response.status}): ${JSON.stringify(responseData)}`);
+      throw new Error(`Pinterest API error (${response.status}): ${errorDetails.error_message} - Full response: ${JSON.stringify(responseData)}`);
     }
 
     const { id: pId } = responseData;
