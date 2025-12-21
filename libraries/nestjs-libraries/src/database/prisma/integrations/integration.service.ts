@@ -184,6 +184,10 @@ export class IntegrationService {
     return this._integrationRepository.getIntegrationById(org, id);
   }
 
+  getIntegrationByIdOnly(id: string) {
+    return this._integrationRepository.getIntegrationByIdOnly(id);
+  }
+
   async refreshToken(provider: SocialProvider, refresh: string) {
     try {
       const { refreshToken, accessToken, expiresIn } =

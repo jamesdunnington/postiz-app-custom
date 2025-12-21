@@ -808,4 +808,48 @@ export class PostsRepository {
 
     return slots;
   }
-}
+
+  // Find duplicate schedules (same integration + same publishDate)
+  async findDuplicateSchedules() {
+    const duplicates = await this._post.model.post.groupBy({
+      by: ['integrationId', 'publishDate'],
+      where: {
+        state: 'QUEUE',
+        deletedAt: null,
+        publishDate: {
+          gte: new Date(), // Only check future posts
+        },
+      },
+      having: {
+        id: {
+          _count: {
+            gt: 1, // More than 1 post at the same time
+          },
+        },
+      },
+      _count: {
+        id: true,
+      },
+    });
+
+    return duplicates.map((d) => ({
+      integrationId: d.integrationId,
+      publishDate: d.publishDate,
+      count: d._count.id,
+    }));
+  }
+
+  // Get all posts for a specific integration and publish date
+  async getPostsByIntegrationAndDate(integrationId: string, publishDate: Date) {
+    return this._post.model.post.findMany({
+      where: {
+        integrationId,
+        publishDate,
+        state: 'QUEUE',
+        deletedAt: null,
+      },
+      orderBy: {
+        createdAt: 'asc', // Keep the oldest post, reschedule newer ones
+      },
+    });
+  }

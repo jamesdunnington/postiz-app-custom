@@ -342,6 +342,16 @@ export class IntegrationRepository {
     });
   }
 
+  // Get integration by ID only (for system-level operations)
+  getIntegrationByIdOnly(id: string) {
+    return this._integration.model.integration.findFirst({
+      where: {
+        id,
+        deletedAt: null,
+      },
+    });
+  }
+
   async getIntegrationForOrder(
     id: string,
     order: string,
