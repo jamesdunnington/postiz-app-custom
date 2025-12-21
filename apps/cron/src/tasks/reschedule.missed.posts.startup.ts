@@ -19,26 +19,12 @@ export class RescheduleMissedPostsStartup implements OnModuleInit {
         console.log('[STARTUP CHECK] Starting missed posts check on server startup...');
         logger.info('Starting missed posts check on server startup...');
 
-        // Get all active integrations (not disabled, not in between steps, no refresh needed)
-        const integrations = await this._integrationService.getIntegrationsList('');
+        // Get all active integrations across all organizations
+        const activeIntegrations = await this._integrationService.getAllActiveIntegrations();
 
-        if (!integrations || integrations.length === 0) {
-          console.log('[STARTUP CHECK] No integrations found to check for missed posts');
-          logger.info('No integrations found to check for missed posts');
-          return;
-        }
-
-        const activeIntegrations = integrations.filter(
-          (integration: any) =>
-            !integration.disabled &&
-            !integration.inBetweenSteps &&
-            !integration.refreshNeeded &&
-            integration.type === 'social'
-        );
-
-        if (activeIntegrations.length === 0) {
-          console.log('[STARTUP CHECK] No active social integrations found');
-          logger.info('No active social integrations found');
+        if (!activeIntegrations || activeIntegrations.length === 0) {
+          console.log('[STARTUP CHECK] No active integrations found to check for missed posts');
+          logger.info('No active integrations found to check for missed posts');
           return;
         }
 

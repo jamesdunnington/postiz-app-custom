@@ -454,6 +454,22 @@ export class IntegrationRepository {
     });
   }
 
+  // Get all active social integrations across all organizations (for startup checks)
+  getAllActiveIntegrations() {
+    return this._integration.model.integration.findMany({
+      where: {
+        deletedAt: null,
+        disabled: false,
+        inBetweenSteps: false,
+        refreshNeeded: false,
+        type: 'social',
+      },
+      include: {
+        customer: true,
+      },
+    });
+  }
+
   async disableChannel(org: string, id: string) {
     await this._integration.model.integration.update({
       where: {
