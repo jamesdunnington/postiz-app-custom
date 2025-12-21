@@ -894,19 +894,20 @@ export class IntegrationService {
             const nextSlot = await this._postsRepository.getNextAvailableSlots(
               post.organizationId,
               integrationId,
-              currentDate.add(1, 'minute').valueOf(),
-              1
+              1,
+              integration.postingTimes
             );
 
             if (nextSlot.length > 0) {
+              const nextSlotDate = dayjs(nextSlot[0]);
               await this._postsRepository.changeDate(
                 post.organizationId,
                 post.id,
                 nextSlot[0].toISOString()
               );
               
-              logger.info(`Rescheduled duplicate post ${post.id} from ${currentDate.format('YYYY-MM-DD HH:mm')} to ${nextSlot[0].format('YYYY-MM-DD HH:mm')}`);
-              console.log(`Successfully rescheduled post ${post.id} from ${currentDate.format('YYYY-MM-DD HH:mm')} to ${nextSlot[0].format('YYYY-MM-DD HH:mm')}`);
+              logger.info(`Rescheduled duplicate post ${post.id} from ${currentDate.format('YYYY-MM-DD HH:mm')} to ${nextSlotDate.format('YYYY-MM-DD HH:mm')}`);
+              console.log(`Successfully rescheduled post ${post.id} from ${currentDate.format('YYYY-MM-DD HH:mm')} to ${nextSlotDate.format('YYYY-MM-DD HH:mm')}`);
               rescheduledCount++;
             }
           } catch (err) {
