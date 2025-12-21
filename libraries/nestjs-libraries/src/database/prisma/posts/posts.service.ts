@@ -1102,8 +1102,7 @@ export class PostsService {
         },
       });
       logger.error(
-        logger.fmt`Error rescheduling missed posts for integration ${integrationId}`,
-        err
+        `Error rescheduling missed posts for integration ${integrationId}: ${err instanceof Error ? err.message : String(err)}`
       );
       return { rescheduled: 0 };
     }
