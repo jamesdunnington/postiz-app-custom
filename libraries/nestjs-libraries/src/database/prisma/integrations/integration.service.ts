@@ -886,7 +886,7 @@ export class IntegrationService {
         console.log(`Processing ${dups.length} duplicate(s) for integration ${integrationId}`);
         
         try {
-          const integration = await this._integrationRepository.getIntegrationById(integrationId);
+          const integration = await this._integrationRepository.getIntegrationByIdOnly(integrationId);
           if (integration) {
             const result = await this.rescheduleMissedPostsForIntegration(integrationId, integration);
             totalRescheduled += result.rescheduled;
