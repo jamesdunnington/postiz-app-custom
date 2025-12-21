@@ -762,10 +762,13 @@ export class PostsRepository {
     count: number,
     postingTimes: { time: number }[]
   ) {
+    console.log(`[getNextAvailableSlots] Looking for ${count} slot(s) for integration ${integrationId}`);
+    console.log(`[getNextAvailableSlots] Has ${postingTimes.length} posting times configured`);
+    
     const slots: Date[] = [];
     const usedTimestamps = new Set<number>(); // Track timestamps to prevent duplicates
     let currentDay = dayjs.utc();
-    const maxDaysToCheck = 30; // Check up to 30 days ahead
+    const maxDaysToCheck = 90; // Check up to 90 days ahead (increased from 30)
     let daysChecked = 0;
 
     while (slots.length < count && daysChecked < maxDaysToCheck) {
@@ -804,6 +807,7 @@ export class PostsRepository {
           if (!existingPost) {
             slots.push(slotTime.toDate());
             usedTimestamps.add(slotTimestamp); // Mark this timestamp as used
+            console.log(`[getNextAvailableSlots] Found available slot: ${slotTime.format('YYYY-MM-DD HH:mm')}`);
           }
         }
       }
@@ -812,6 +816,7 @@ export class PostsRepository {
       daysChecked++;
     }
 
+    console.log(`[getNextAvailableSlots] Found ${slots.length} slot(s) after checking ${daysChecked} days`);
     return slots;
   }
 
