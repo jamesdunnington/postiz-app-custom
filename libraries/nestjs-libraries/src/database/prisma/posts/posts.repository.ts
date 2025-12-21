@@ -817,35 +817,52 @@ export class PostsRepository {
 
   // Find duplicate schedules (same integration + same publishDate at minute-level precision)
   async findDuplicateSchedules() {
-    // Use raw query to group by minute-level precision (ignoring seconds)
-    const duplicates = await this._post.model.$queryRaw<Array<{
-      integrationId: string;
-      publishMinute: Date;
-      count: bigint;
-    }>>`
-      SELECT 
-        "integrationId",
-        date_trunc('minute', "publishDate") as "publishMinute",
-        COUNT(*)::int as count
-      FROM "Post"
-      WHERE "state" = 'QUEUE'
-        AND "deletedAt" IS NULL
-        AND "publishDate" >= NOW()
-      GROUP BY "integrationId", date_trunc('minute', "publishDate")
-      HAVING COUNT(*) > 1
-    `;
+    // Get all QUEUE posts
+    const posts = await this._post.model.post.findMany({
+      where: {
+        state: 'QUEUE',
+        deletedAt: null,
+        publishDate: {
+          gte: new Date(),
+        },
+      },
+      select: {
+        id: true,
+        integrationId: true,
+        publishDate: true,
+      },
+    });
 
-    return duplicates.map((d) => ({
-      integrationId: d.integrationId,
-      publishDate: d.publishMinute,
-      count: Number(d.count),
-    }));
+    // Group by integration + minute (ignoring seconds)
+    const grouped = new Map<string, Array<{ id: string; publishDate: Date }>>();
+    
+    for (const post of posts) {
+      const minute = dayjs(post.publishDate).second(0).millisecond(0).format();
+      const key = `${post.integrationId}:${minute}`;
+      
+      if (!grouped.has(key)) {
+        grouped.set(key, []);
+      }
+      grouped.get(key)!.push({ id: post.id, publishDate: post.publishDate });
+    }
+
+    // Find duplicates (more than 1 post per integration+minute)
+    const duplicates = [];
+    for (const [key, posts] of grouped.entries()) {
+      if (posts.length > 1) {
+        const [integrationId, minuteStr] = key.split(':');
+        duplicates.push({
+          integrationId,
+          publishDate: dayjs(minuteStr).toDate(),
+          count: posts.length,
+        });
+      }
+    }
+
+    return duplicates;
   }
 
-  // Get all posts for a specific integration and publish date
-  async getPostsByIntegrationAndDate(integrationId: string, publishDate: Date) {
-    return this._post.model.post.findMany({
-      where: { (at minute-level precision)
+  // Get all posts for a specific integration and publish date (at minute-level precision)
   async getPostsByIntegrationAndDate(integrationId: string, publishDate: Date) {
     // Find posts within the same minute (ignore seconds/milliseconds)
     const startOfMinute = dayjs(publishDate).second(0).millisecond(0).toDate();
@@ -857,9 +874,12 @@ export class PostsRepository {
         publishDate: {
           gte: startOfMinute,
           lt: endOfMinute,
-        }
+        },
+        state: 'QUEUE',
+        deletedAt: null,
+      },
       orderBy: {
         createdAt: 'asc', // Keep the oldest post, reschedule newer ones
       },
     });
-  }}
+  }
