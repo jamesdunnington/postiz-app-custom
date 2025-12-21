@@ -1,4 +1,4 @@
-import { Global, Module } from '@nestjs/common';
+import { Global, Module, OnModuleInit } from '@nestjs/common';
 import { DatabaseModule } from '@gitroom/nestjs-libraries/database/prisma/database.module';
 import { ApiModule } from '@gitroom/backend/api/api.module';
 import { APP_GUARD } from '@nestjs/core';
@@ -13,6 +13,7 @@ import { VideoModule } from '@gitroom/nestjs-libraries/videos/video.module';
 import { SentryModule } from '@sentry/nestjs/setup';
 import { FILTER } from '@gitroom/nestjs-libraries/sentry/sentry.exception';
 import { ChatModule } from '@gitroom/nestjs-libraries/chat/chat.module';
+import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
 
 @Global()
 @Module({
@@ -55,4 +56,17 @@ import { ChatModule } from '@gitroom/nestjs-libraries/chat/chat.module';
     ChatModule,
   ],
 })
-export class AppModule {}
+export class AppModule implements OnModuleInit {
+  constructor(private integrationService: IntegrationService) {}
+
+  async onModuleInit() {
+    console.log('Checking for duplicate post schedules on startup...');
+    try {
+      // Check for missed posts and reschedule them
+      await this.integrationService.checkAndRescheduleMissedPosts();
+      console.log('Startup duplicate check completed');
+    } catch (error) {
+      console.error('Error during startup duplicate check:', error);
+    }
+  }
+}
