@@ -883,3 +883,4 @@ export class PostsRepository {
       },
     });
   }
+}
