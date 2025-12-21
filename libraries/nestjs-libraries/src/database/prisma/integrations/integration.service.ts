@@ -766,28 +766,40 @@ export class IntegrationService {
         return { rescheduled: 0 };
       }
 
-      // Get next available slots
-      const availableSlots = await this._postsRepository.getNextAvailableSlots(
-        missedPosts[0].organizationId,
-        integrationId,
-        missedPosts.length,
-        postingTimes
-      );
-
-      if (availableSlots.length === 0) {
-        logger.warn(
-          logger.fmt`No available slots found for integration ${integrationId}`
-        );
-        return { rescheduled: 0 };
-      }
-
-      // Reschedule posts to available slots
+      // Reschedule posts to available slots one at a time
       let rescheduledCount = 0;
-      for (let i = 0; i < Math.min(missedPosts.length, availableSlots.length); i++) {
-        const post = missedPosts[i];
-        const newSlot = availableSlots[i];
+      const usedSlots = new Set<number>(); // Track slots we've assigned in this session
+      
+      for (const post of missedPosts) {
+        // Get next available slot that hasn't been used yet in this batch
+        const availableSlot = await this._postsRepository.getNextAvailableSlots(
+          post.organizationId,
+          integrationId,
+          1, // Get one slot at a time
+          postingTimes
+        );
 
+        if (availableSlot.length === 0) {
+          logger.warn(
+            `No available slot found for post ${post.id}, stopping reschedule`
+          );
+          break;
+        }
+
+        const newSlot = availableSlot[0];
+        const slotTimestamp = dayjs(newSlot).valueOf();
+
+        // Double-check this slot hasn't been used in this session
+        if (usedSlots.has(slotTimestamp)) {
+          logger.warn(
+            `Slot ${newSlot} already used in this session, skipping post ${post.id}`
+          );
+          continue;
+        }
+
+        // Update the post's publish date
         await this._postsRepository.updatePostPublishDate(post.id, newSlot);
+        usedSlots.add(slotTimestamp);
 
         // Re-queue the post in the worker
         this._workerServiceProducer.emit('post', {
@@ -802,7 +814,7 @@ export class IntegrationService {
 
         rescheduledCount++;
         logger.info(
-          logger.fmt`Rescheduled post ${post.id} from ${post.publishDate} to ${newSlot}`
+          `Rescheduled post ${post.id} from ${dayjs(post.publishDate).format('YYYY-MM-DD HH:mm')} to ${dayjs(newSlot).format('YYYY-MM-DD HH:mm')}`
         );
       }
 
