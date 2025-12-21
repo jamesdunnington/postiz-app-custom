@@ -868,7 +868,9 @@ export class PostsRepository {
     const startOfMinute = dayjs(publishDate).second(0).millisecond(0).toDate();
     const endOfMinute = dayjs(startOfMinute).add(1, 'minute').toDate();
     
-    return this._post.model.post.findMany({
+    console.log(`[getPostsByIntegrationAndDate] Query for ${integrationId} between ${startOfMinute.toISOString()} and ${endOfMinute.toISOString()}`);
+    
+    const posts = await this._post.model.post.findMany({
       where: {
         integrationId,
         publishDate: {
@@ -882,5 +884,8 @@ export class PostsRepository {
         createdAt: 'asc', // Keep the oldest post, reschedule newer ones
       },
     });
+    
+    console.log(`[getPostsByIntegrationAndDate] Found ${posts.length} posts`);
+    return posts;
   }
 }
