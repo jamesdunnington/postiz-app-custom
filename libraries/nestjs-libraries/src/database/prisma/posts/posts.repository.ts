@@ -774,7 +774,7 @@ export class PostsRepository {
 
         const hours = Math.floor(time / 60);
         const minutes = time % 60;
-        const slotTime = currentDay.hour(hours).minute(minutes).second(0);
+        const slotTime = currentDay.hour(hours).minute(minutes).second(0).millisecond(0);
         const slotTimestamp = slotTime.valueOf();
 
         // Only consider future slots
@@ -784,12 +784,18 @@ export class PostsRepository {
             continue;
           }
 
-          // Check if this slot is already occupied in the database
+          // Check if this slot is already occupied in the database (at minute-level precision)
+          const slotDate = slotTime.toDate();
+          const endOfMinute = slotTime.add(1, 'minute').toDate();
+          
           const existingPost = await this._post.model.post.findFirst({
             where: {
               integrationId,
               organizationId: orgId,
-              publishDate: slotTime.toDate(),
+              publishDate: {
+                gte: slotDate,
+                lt: endOfMinute,
+              },
               deletedAt: null,
               state: 'QUEUE',
             },
@@ -809,45 +815,49 @@ export class PostsRepository {
     return slots;
   }
 
-  // Find duplicate schedules (same integration + same publishDate)
+  // Find duplicate schedules (same integration + same publishDate at minute-level precision)
   async findDuplicateSchedules() {
-    const duplicates = await this._post.model.post.groupBy({
-      by: ['integrationId', 'publishDate'],
-      where: {
-        state: 'QUEUE',
-        deletedAt: null,
-        publishDate: {
-          gte: new Date(), // Only check future posts
-        },
-      },
-      having: {
-        id: {
-          _count: {
-            gt: 1, // More than 1 post at the same time
-          },
-        },
-      },
-      _count: {
-        id: true,
-      },
-    });
+    // Use raw query to group by minute-level precision (ignoring seconds)
+    const duplicates = await this._post.model.$queryRaw<Array<{
+      integrationId: string;
+      publishMinute: Date;
+      count: bigint;
+    }>>`
+      SELECT 
+        "integrationId",
+        date_trunc('minute', "publishDate") as "publishMinute",
+        COUNT(*)::int as count
+      FROM "Post"
+      WHERE "state" = 'QUEUE'
+        AND "deletedAt" IS NULL
+        AND "publishDate" >= NOW()
+      GROUP BY "integrationId", date_trunc('minute', "publishDate")
+      HAVING COUNT(*) > 1
+    `;
 
     return duplicates.map((d) => ({
       integrationId: d.integrationId,
-      publishDate: d.publishDate,
-      count: d._count.id,
+      publishDate: d.publishMinute,
+      count: Number(d.count),
     }));
   }
 
   // Get all posts for a specific integration and publish date
   async getPostsByIntegrationAndDate(integrationId: string, publishDate: Date) {
     return this._post.model.post.findMany({
+      where: { (at minute-level precision)
+  async getPostsByIntegrationAndDate(integrationId: string, publishDate: Date) {
+    // Find posts within the same minute (ignore seconds/milliseconds)
+    const startOfMinute = dayjs(publishDate).second(0).millisecond(0).toDate();
+    const endOfMinute = dayjs(startOfMinute).add(1, 'minute').toDate();
+    
+    return this._post.model.post.findMany({
       where: {
         integrationId,
-        publishDate,
-        state: 'QUEUE',
-        deletedAt: null,
-      },
+        publishDate: {
+          gte: startOfMinute,
+          lt: endOfMinute,
+        }
       orderBy: {
         createdAt: 'asc', // Keep the oldest post, reschedule newer ones
       },
