@@ -1008,4 +1008,104 @@ export class PostsService {
       message
     );
   }
+
+  async rescheduleMissedPosts(
+    integrationId: string,
+    integration: Integration
+  ) {
+    const { logger } = Sentry;
+    try {
+      // Get all missed posts for this integration
+      const missedPosts = await this._postRepository.getMissedPostsForIntegration(
+        integrationId
+      );
+
+      if (missedPosts.length === 0) {
+        logger.info(
+          logger.fmt`No missed posts to reschedule for integration ${integrationId}`
+        );
+        return { rescheduled: 0 };
+      }
+
+      // Get posting times for this integration
+      const postingTimes = JSON.parse(integration.postingTimes || '[]');
+
+      if (postingTimes.length === 0) {
+        logger.warn(
+          logger.fmt`No posting times configured for integration ${integrationId}, cannot reschedule posts`
+        );
+        return { rescheduled: 0 };
+      }
+
+      // Get next available slots
+      const availableSlots = await this._postRepository.getNextAvailableSlots(
+        missedPosts[0].organizationId,
+        integrationId,
+        missedPosts.length,
+        postingTimes
+      );
+
+      if (availableSlots.length === 0) {
+        logger.warn(
+          logger.fmt`No available slots found for integration ${integrationId}`
+        );
+        return { rescheduled: 0 };
+      }
+
+      // Reschedule posts to available slots
+      let rescheduledCount = 0;
+      for (let i = 0; i < Math.min(missedPosts.length, availableSlots.length); i++) {
+        const post = missedPosts[i];
+        const newSlot = availableSlots[i];
+
+        await this._postRepository.updatePostPublishDate(post.id, newSlot);
+
+        // Re-queue the post in the worker
+        this._workerServiceProducer.emit('post', {
+          id: post.id,
+          options: {
+            delay: dayjs(newSlot).diff(dayjs(), 'millisecond'),
+          },
+          payload: {
+            id: post.id,
+          },
+        });
+
+        rescheduledCount++;
+        logger.info(
+          logger.fmt`Rescheduled post ${post.id} from ${post.publishDate} to ${newSlot}`
+        );
+      }
+
+      // Send notification to user
+      if (rescheduledCount > 0) {
+        await this._notificationService.inAppNotification(
+          missedPosts[0].organizationId,
+          `${rescheduledCount} missed ${rescheduledCount === 1 ? 'post has' : 'posts have'} been rescheduled`,
+          `We've automatically rescheduled ${rescheduledCount} missed ${
+            rescheduledCount === 1 ? 'post' : 'posts'
+          } for ${integration.name} (${
+            integration.providerIdentifier
+          }) to the next available time ${
+            rescheduledCount === 1 ? 'slot' : 'slots'
+          }.`,
+          true
+        );
+      }
+
+      return { rescheduled: rescheduledCount };
+    } catch (err) {
+      Sentry.captureException(err, {
+        extra: {
+          context: 'Failed to reschedule missed posts',
+          integrationId,
+        },
+      });
+      logger.error(
+        logger.fmt`Error rescheduling missed posts for integration ${integrationId}`,
+        err
+      );
+      return { rescheduled: 0 };
+    }
+  }
 }

@@ -722,4 +722,90 @@ export class PostsRepository {
       },
     });
   }
+
+  async getMissedPostsForIntegration(integrationId: string) {
+    return this._post.model.post.findMany({
+      where: {
+        integrationId,
+        state: 'QUEUE',
+        publishDate: {
+          lt: dayjs.utc().toDate(),
+        },
+        deletedAt: null,
+        parentPostId: null,
+      },
+      orderBy: {
+        publishDate: 'asc',
+      },
+      select: {
+        id: true,
+        publishDate: true,
+        organizationId: true,
+      },
+    });
+  }
+
+  async updatePostPublishDate(postId: string, newPublishDate: Date) {
+    return this._post.model.post.update({
+      where: {
+        id: postId,
+      },
+      data: {
+        publishDate: newPublishDate,
+      },
+    });
+  }
+
+  async getNextAvailableSlots(
+    orgId: string,
+    integrationId: string,
+    count: number,
+    postingTimes: { time: number }[]
+  ) {
+    const slots: Date[] = [];
+    const usedTimestamps = new Set<number>(); // Track timestamps to prevent duplicates
+    let currentDay = dayjs.utc();
+    const maxDaysToCheck = 30; // Check up to 30 days ahead
+    let daysChecked = 0;
+
+    while (slots.length < count && daysChecked < maxDaysToCheck) {
+      for (const { time } of postingTimes) {
+        if (slots.length >= count) break;
+
+        const hours = Math.floor(time / 60);
+        const minutes = time % 60;
+        const slotTime = currentDay.hour(hours).minute(minutes).second(0);
+        const slotTimestamp = slotTime.valueOf();
+
+        // Only consider future slots
+        if (slotTime.isAfter(dayjs.utc())) {
+          // Check if this slot timestamp has already been assigned in this session
+          if (usedTimestamps.has(slotTimestamp)) {
+            continue;
+          }
+
+          // Check if this slot is already occupied in the database
+          const existingPost = await this._post.model.post.findFirst({
+            where: {
+              integrationId,
+              organizationId: orgId,
+              publishDate: slotTime.toDate(),
+              deletedAt: null,
+              state: 'QUEUE',
+            },
+          });
+
+          if (!existingPost) {
+            slots.push(slotTime.toDate());
+            usedTimestamps.add(slotTimestamp); // Mark this timestamp as used
+          }
+        }
+      }
+
+      currentDay = currentDay.add(1, 'day');
+      daysChecked++;
+    }
+
+    return slots;
+  }
 }
