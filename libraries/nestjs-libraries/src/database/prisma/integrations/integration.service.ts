@@ -869,6 +869,15 @@ export class IntegrationService {
 
       console.log(`Found ${integrationDuplicates.length} posts with duplicates for integration ${integrationId}`);
 
+      // Parse posting times
+      const postingTimes = JSON.parse(integration.postingTimes || '[]');
+      console.log(`Integration has ${postingTimes.length} posting time slots configured`);
+
+      if (postingTimes.length === 0) {
+        console.log(`No posting times configured for integration ${integrationId}, cannot reschedule duplicates`);
+        return { rescheduled: 0 };
+      }
+
       // Group by timeslot
       const slotGroups = new Map<string, typeof integrationDuplicates>();
       for (const post of integrationDuplicates) {
@@ -897,7 +906,7 @@ export class IntegrationService {
               post.organizationId,
               integrationId,
               1,
-              integration.postingTimes
+              postingTimes
             );
 
             if (nextSlot.length > 0) {
