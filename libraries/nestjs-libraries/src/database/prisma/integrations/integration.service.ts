@@ -876,9 +876,17 @@ export class IntegrationService {
         slotGroups.get(slotKey)!.push(post);
       }
 
+      console.log(`Created ${slotGroups.size} slot groups for integration ${integrationId}`);
+      for (const [key, posts] of slotGroups.entries()) {
+        console.log(`  Slot ${key}: ${posts.length} posts`);
+      }
+
       // For each group with duplicates, keep the first and reschedule the rest
       for (const [slotKey, posts] of slotGroups.entries()) {
-        if (posts.length <= 1) continue;
+        if (posts.length <= 1) {
+          console.log(`Skipping slot ${slotKey} - only ${posts.length} post(s)`);
+          continue;
+        }
 
         // Sort by creation date, keep oldest
         posts.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
