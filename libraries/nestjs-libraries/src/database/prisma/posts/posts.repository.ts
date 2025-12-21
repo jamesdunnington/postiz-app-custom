@@ -822,13 +822,18 @@ export class PostsRepository {
 
   // Find duplicate schedules (same integration + same publishDate at minute-level precision)
   async findDuplicateSchedules() {
-    // Get all QUEUE posts with full details needed for rescheduling
+    const now = dayjs.utc();
+    const startOfToday = now.startOf('day').toDate();
+    
+    console.log(`[findDuplicateSchedules] Searching for duplicates from ${startOfToday.toISOString()} onwards`);
+    
+    // Get all QUEUE posts from today onwards with full details needed for rescheduling
     const posts = await this._post.model.post.findMany({
       where: {
         state: 'QUEUE',
         deletedAt: null,
         publishDate: {
-          gte: new Date(),
+          gte: startOfToday, // Start from beginning of today, not just future posts
         },
       },
       select: {
@@ -865,6 +870,7 @@ export class PostsRepository {
       }
     }
 
+    console.log(`[findDuplicateSchedules] Found ${posts.length} total QUEUE posts, ${duplicates.length} are duplicates across ${grouped.size} timeslots`);
     return duplicates;
   }
 
