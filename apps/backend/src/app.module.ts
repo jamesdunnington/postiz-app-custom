@@ -60,13 +60,16 @@ export class AppModule implements OnModuleInit {
   constructor(private integrationService: IntegrationService) {}
 
   async onModuleInit() {
-    console.log('Checking for duplicate post schedules on startup...');
-    try {
-      // Check for missed posts and reschedule them
-      await this.integrationService.checkAndRescheduleMissedPosts();
-      console.log('Startup duplicate check completed');
-    } catch (error) {
-      console.error('Error during startup duplicate check:', error);
-    }
+    // Run duplicate check asynchronously without blocking app startup
+    setImmediate(() => {
+      console.log('Checking for duplicate post schedules on startup...');
+      this.integrationService.checkAndRescheduleMissedPosts()
+        .then(() => {
+          console.log('Startup duplicate check completed');
+        })
+        .catch((error) => {
+          console.error('Error during startup duplicate check:', error);
+        });
+    });
   }
 }
