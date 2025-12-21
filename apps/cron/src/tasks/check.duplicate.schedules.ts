@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PostsRepository } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.repository';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
-import { BullMqClient } from '@gitroom/nestjs-libraries/bull-mq-transport-new/bull.mq.client';
+import { BullMqClient } from '@gitroom/nestjs-libraries/bull-mq-transport/client';
 import * as Sentry from '@sentry/nestjs';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
