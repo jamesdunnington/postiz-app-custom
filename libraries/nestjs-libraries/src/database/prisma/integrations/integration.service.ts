@@ -858,44 +858,37 @@ export class IntegrationService {
     let rescheduledCount = 0;
 
     try {
-      // Get all posts for this integration with duplicate schedules
+      // Get duplicate schedule summaries for this integration
       const duplicates = await this._postsRepository.findDuplicateSchedules();
       const integrationDuplicates = duplicates.filter(d => d.integrationId === integrationId);
 
       if (integrationDuplicates.length === 0) {
+        console.log(`No duplicate timeslots found for integration ${integrationId}`);
         return { rescheduled: 0 };
       }
 
-      // Group by timeslot to identify which posts need rescheduling
-      const slotGroups = new Map<string, typeof integrationDuplicates>();
-      for (const post of integrationDuplicates) {
-        const slotKey = dayjs(post.publishDate).format('YYYY-MM-DD HH:mm');
-        if (!slotGroups.has(slotKey)) {
-          slotGroups.set(slotKey, []);
-        }
-        slotGroups.get(slotKey)!.push(post);
-      }
+      console.log(`Found ${integrationDuplicates.length} duplicate timeslots for integration ${integrationId}`);
 
-      console.log(`Created ${slotGroups.size} slot groups for integration ${integrationId}`);
-      for (const [key, posts] of slotGroups.entries()) {
-        console.log(`  Slot ${key}: ${posts.length} posts`);
-      }
+      // For each duplicate timeslot, fetch the actual posts and reschedule extras
+      for (const duplicate of integrationDuplicates) {
+        const slotKey = dayjs(duplicate.publishDate).format('YYYY-MM-DD HH:mm');
+        
+        // Fetch all posts in this timeslot
+        const postsInSlot = await this._postsRepository.getPostsByIntegrationAndDate(
+          integrationId,
+          duplicate.publishDate
+        );
 
-      // For each group with duplicates, keep the first and reschedule the rest
-      for (const [slotKey, posts] of slotGroups.entries()) {
-        if (posts.length <= 1) {
-          console.log(`Skipping slot ${slotKey} - only ${posts.length} post(s)`);
+        if (postsInSlot.length <= 1) {
+          console.log(`Timeslot ${slotKey} only has ${postsInSlot.length} post(s), skipping`);
           continue;
         }
 
-        // Sort by creation date, keep oldest
-        posts.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-        const postsToReschedule = posts.slice(1); // Skip first, reschedule rest
+        console.log(`Timeslot ${slotKey}: found ${postsInSlot.length} posts, keeping oldest, rescheduling ${postsInSlot.length - 1}`);
 
-        logger.info(`Found ${postsToReschedule.length} duplicate(s) at ${slotKey} for integration ${integrationId}`);
-        console.log(`Found ${postsToReschedule.length} duplicate(s) at ${slotKey} for integration ${integrationId}`);
+        // Keep first (oldest), reschedule the rest
+        const postsToReschedule = postsInSlot.slice(1);
 
-        // Reschedule each duplicate post
         for (const post of postsToReschedule) {
           try {
             const currentDate = dayjs(post.publishDate);
@@ -915,8 +908,10 @@ export class IntegrationService {
               );
               
               logger.info(`Rescheduled duplicate post ${post.id} from ${currentDate.format('YYYY-MM-DD HH:mm')} to ${nextSlotDate.format('YYYY-MM-DD HH:mm')}`);
-              console.log(`Successfully rescheduled post ${post.id} from ${currentDate.format('YYYY-MM-DD HH:mm')} to ${nextSlotDate.format('YYYY-MM-DD HH:mm')}`);
+              console.log(`✓ Rescheduled post ${post.id} from ${currentDate.format('YYYY-MM-DD HH:mm')} to ${nextSlotDate.format('YYYY-MM-DD HH:mm')}`);
               rescheduledCount++;
+            } else {
+              console.log(`No available slots found for post ${post.id}`);
             }
           } catch (err) {
             logger.error(`Failed to reschedule duplicate post ${post.id}: ${err instanceof Error ? err.message : String(err)}`);
