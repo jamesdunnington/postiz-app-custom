@@ -817,7 +817,7 @@ export class PostsRepository {
 
   // Find duplicate schedules (same integration + same publishDate at minute-level precision)
   async findDuplicateSchedules() {
-    // Get all QUEUE posts
+    // Get all QUEUE posts with full details needed for rescheduling
     const posts = await this._post.model.post.findMany({
       where: {
         state: 'QUEUE',
@@ -829,33 +829,34 @@ export class PostsRepository {
       select: {
         id: true,
         integrationId: true,
+        organizationId: true,
         publishDate: true,
+        createdAt: true,
+      },
+      orderBy: {
+        createdAt: 'asc', // Oldest first
       },
     });
 
     // Group by integration + minute (ignoring seconds)
-    const grouped = new Map<string, Array<{ id: string; publishDate: Date }>>();
+    const grouped = new Map<string, typeof posts>();
     
     for (const post of posts) {
-      const minute = dayjs(post.publishDate).second(0).millisecond(0).format();
+      const minute = dayjs(post.publishDate).second(0).millisecond(0).toISOString();
       const key = `${post.integrationId}:${minute}`;
       
       if (!grouped.has(key)) {
         grouped.set(key, []);
       }
-      grouped.get(key)!.push({ id: post.id, publishDate: post.publishDate });
+      grouped.get(key)!.push(post);
     }
 
-    // Find duplicates (more than 1 post per integration+minute)
+    // Return all posts from slots that have duplicates (more than 1 post)
     const duplicates = [];
-    for (const [key, posts] of grouped.entries()) {
-      if (posts.length > 1) {
-        const [integrationId, minuteStr] = key.split(':');
-        duplicates.push({
-          integrationId,
-          publishDate: dayjs(minuteStr).toDate(),
-          count: posts.length,
-        });
+    for (const [key, postsInSlot] of grouped.entries()) {
+      if (postsInSlot.length > 1) {
+        // Return all posts in this duplicate slot
+        duplicates.push(...postsInSlot);
       }
     }
 

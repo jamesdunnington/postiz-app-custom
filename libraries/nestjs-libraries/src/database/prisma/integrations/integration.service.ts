@@ -858,35 +858,36 @@ export class IntegrationService {
     let rescheduledCount = 0;
 
     try {
-      // Get duplicate schedule summaries for this integration
-      const duplicates = await this._postsRepository.findDuplicateSchedules();
-      const integrationDuplicates = duplicates.filter(d => d.integrationId === integrationId);
+      // Get all posts with duplicate schedules (actual posts, not summaries)
+      const allDuplicates = await this._postsRepository.findDuplicateSchedules();
+      const integrationDuplicates = allDuplicates.filter(p => p.integrationId === integrationId);
 
       if (integrationDuplicates.length === 0) {
-        console.log(`No duplicate timeslots found for integration ${integrationId}`);
+        console.log(`No duplicate posts found for integration ${integrationId}`);
         return { rescheduled: 0 };
       }
 
-      console.log(`Found ${integrationDuplicates.length} duplicate timeslots for integration ${integrationId}`);
+      console.log(`Found ${integrationDuplicates.length} posts with duplicates for integration ${integrationId}`);
 
-      // For each duplicate timeslot, fetch the actual posts and reschedule extras
-      for (const duplicate of integrationDuplicates) {
-        const slotKey = dayjs(duplicate.publishDate).format('YYYY-MM-DD HH:mm');
-        
-        // Fetch all posts in this timeslot
-        const postsInSlot = await this._postsRepository.getPostsByIntegrationAndDate(
-          integrationId,
-          duplicate.publishDate
-        );
-
-        if (postsInSlot.length <= 1) {
-          console.log(`Timeslot ${slotKey} only has ${postsInSlot.length} post(s), skipping`);
-          continue;
+      // Group by timeslot
+      const slotGroups = new Map<string, typeof integrationDuplicates>();
+      for (const post of integrationDuplicates) {
+        const slotKey = dayjs(post.publishDate).second(0).millisecond(0).format('YYYY-MM-DD HH:mm');
+        if (!slotGroups.has(slotKey)) {
+          slotGroups.set(slotKey, []);
         }
+        slotGroups.get(slotKey)!.push(post);
+      }
 
-        console.log(`Timeslot ${slotKey}: found ${postsInSlot.length} posts, keeping oldest, rescheduling ${postsInSlot.length - 1}`);
+      console.log(`Grouped into ${slotGroups.size} duplicate timeslots`);
 
-        // Keep first (oldest), reschedule the rest
+      // For each timeslot with duplicates, keep first (oldest), reschedule rest
+      for (const [slotKey, postsInSlot] of slotGroups.entries()) {
+        if (postsInSlot.length <= 1) continue;
+
+        console.log(`Timeslot ${slotKey}: ${postsInSlot.length} posts - keeping oldest, rescheduling ${postsInSlot.length - 1}`);
+
+        // Already sorted by createdAt (oldest first), skip first, reschedule rest
         const postsToReschedule = postsInSlot.slice(1);
 
         for (const post of postsToReschedule) {
@@ -920,6 +921,7 @@ export class IntegrationService {
         }
       }
 
+      console.log(`Completed - rescheduled ${rescheduledCount} posts for integration ${integrationId}`);
       return { rescheduled: rescheduledCount };
     } catch (err) {
       Sentry.captureException(err, {
