@@ -894,7 +894,7 @@ export class IntegrationService {
             const nextSlot = await this._postsRepository.getNextAvailableSlots(
               post.organizationId,
               integrationId,
-              currentDate.toDate(),
+              currentDate.add(1, 'minute').valueOf(),
               1
             );
 
@@ -905,7 +905,7 @@ export class IntegrationService {
                 nextSlot[0].toISOString()
               );
               
-              logger.info(`Rescheduled duplicate post ${post.id} from ${currentDate.format()} to ${nextSlot[0].format()}`);
+              logger.info(`Rescheduled duplicate post ${post.id} from ${currentDate.format('YYYY-MM-DD HH:mm')} to ${nextSlot[0].format('YYYY-MM-DD HH:mm')}`);
               console.log(`Successfully rescheduled post ${post.id} from ${currentDate.format('YYYY-MM-DD HH:mm')} to ${nextSlot[0].format('YYYY-MM-DD HH:mm')}`);
               rescheduledCount++;
             }
