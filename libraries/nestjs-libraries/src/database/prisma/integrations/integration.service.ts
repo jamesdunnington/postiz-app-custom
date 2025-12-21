@@ -852,4 +852,61 @@ export class IntegrationService {
       return { rescheduled: 0 };
     }
   }
+
+  async checkAndRescheduleMissedPosts() {
+    const { logger } = Sentry;
+    logger.info('Checking for duplicate post schedules on startup...');
+    
+    try {
+      // Check for duplicates
+      const duplicates = await this._postsRepository.findDuplicateSchedules();
+      
+      if (duplicates.length === 0) {
+        logger.info('No duplicate schedules found');
+        console.log('No duplicate schedules found');
+        return;
+      }
+
+      logger.info(`Found ${duplicates.length} duplicate schedules`);
+      console.log(`Found ${duplicates.length} duplicate schedules`);
+
+      // Group duplicates by integration
+      const byIntegration = new Map<string, typeof duplicates>();
+      for (const dup of duplicates) {
+        if (!byIntegration.has(dup.integrationId)) {
+          byIntegration.set(dup.integrationId, []);
+        }
+        byIntegration.get(dup.integrationId)!.push(dup);
+      }
+
+      // Process each integration's duplicates
+      let totalRescheduled = 0;
+      for (const [integrationId, dups] of byIntegration.entries()) {
+        logger.info(`Processing ${dups.length} duplicate(s) for integration ${integrationId}`);
+        console.log(`Processing ${dups.length} duplicate(s) for integration ${integrationId}`);
+        
+        try {
+          const integration = await this._integrationRepository.getIntegrationById(integrationId);
+          if (integration) {
+            const result = await this.rescheduleMissedPostsForIntegration(integrationId, integration);
+            totalRescheduled += result.rescheduled;
+          }
+        } catch (err) {
+          logger.error(`Error processing integration ${integrationId}: ${err instanceof Error ? err.message : String(err)}`);
+          console.error(`Error processing integration ${integrationId}:`, err);
+        }
+      }
+
+      logger.info(`Startup duplicate check completed - rescheduled ${totalRescheduled} posts`);
+      console.log(`Startup duplicate check completed - rescheduled ${totalRescheduled} posts`);
+    } catch (err) {
+      Sentry.captureException(err, {
+        extra: {
+          context: 'Failed startup duplicate check',
+        },
+      });
+      logger.error(`Error during startup duplicate check: ${err instanceof Error ? err.message : String(err)}`);
+      console.error('Error during startup duplicate check:', err);
+    }
+  }
 }
