@@ -16,12 +16,14 @@ export class RescheduleMissedPostsStartup implements OnModuleInit {
     // This prevents blocking the server startup
     setImmediate(async () => {
       try {
+        console.log('[STARTUP CHECK] Starting missed posts check on server startup...');
         logger.info('Starting missed posts check on server startup...');
 
         // Get all active integrations (not disabled, not in between steps, no refresh needed)
         const integrations = await this._integrationService.getIntegrationsList('');
 
         if (!integrations || integrations.length === 0) {
+          console.log('[STARTUP CHECK] No integrations found to check for missed posts');
           logger.info('No integrations found to check for missed posts');
           return;
         }
@@ -35,10 +37,14 @@ export class RescheduleMissedPostsStartup implements OnModuleInit {
         );
 
         if (activeIntegrations.length === 0) {
+          console.log('[STARTUP CHECK] No active social integrations found');
           logger.info('No active social integrations found');
           return;
         }
 
+        console.log(
+          `[STARTUP CHECK] Checking ${activeIntegrations.length} active integrations for missed posts`
+        );
         logger.info(
           `Checking ${activeIntegrations.length} active integrations for missed posts`
         );
@@ -55,6 +61,9 @@ export class RescheduleMissedPostsStartup implements OnModuleInit {
               );
 
             if (missedPosts.length > 0) {
+              console.log(
+                `[STARTUP CHECK] Found ${missedPosts.length} missed posts for integration ${integration.providerIdentifier} (${integration.name})`
+              );
               logger.info(
                 `Found ${missedPosts.length} missed posts for integration ${integration.providerIdentifier} (${integration.name})`
               );
@@ -69,6 +78,9 @@ export class RescheduleMissedPostsStartup implements OnModuleInit {
               totalRescheduled += result.rescheduled;
             }
           } catch (err) {
+            console.error(
+              `[STARTUP CHECK] ❌ Error processing integration ${integration.id}: ${err instanceof Error ? err.message : String(err)}`
+            );
             Sentry.captureException(err, {
               extra: {
                 context:
@@ -86,10 +98,16 @@ export class RescheduleMissedPostsStartup implements OnModuleInit {
         }
 
         if (totalRescheduled > 0) {
+          console.log(
+            `[STARTUP CHECK] ✅ Complete: Rescheduled ${totalRescheduled} missed posts across ${activeIntegrations.length} integrations`
+          );
           logger.info(
             `Server startup check complete: Rescheduled ${totalRescheduled} missed posts across ${activeIntegrations.length} integrations`
           );
         } else {
+          console.log(
+            `[STARTUP CHECK] ✅ Complete: No missed posts found across ${activeIntegrations.length} integrations`
+          );
           logger.info(
             `Server startup check complete: No missed posts found across ${activeIntegrations.length} integrations`
           );
