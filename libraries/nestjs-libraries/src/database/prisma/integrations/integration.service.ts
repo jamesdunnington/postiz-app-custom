@@ -853,6 +853,82 @@ export class IntegrationService {
     }
   }
 
+  async resolveDuplicatesForIntegration(integrationId: string, integration: any) {
+    const { logger } = Sentry;
+    let rescheduledCount = 0;
+
+    try {
+      // Get all posts for this integration with duplicate schedules
+      const duplicates = await this._postsRepository.findDuplicateSchedules();
+      const integrationDuplicates = duplicates.filter(d => d.integrationId === integrationId);
+
+      if (integrationDuplicates.length === 0) {
+        return { rescheduled: 0 };
+      }
+
+      // Group by timeslot to identify which posts need rescheduling
+      const slotGroups = new Map<string, typeof integrationDuplicates>();
+      for (const post of integrationDuplicates) {
+        const slotKey = dayjs(post.publishDate).format('YYYY-MM-DD HH:mm');
+        if (!slotGroups.has(slotKey)) {
+          slotGroups.set(slotKey, []);
+        }
+        slotGroups.get(slotKey)!.push(post);
+      }
+
+      // For each group with duplicates, keep the first and reschedule the rest
+      for (const [slotKey, posts] of slotGroups.entries()) {
+        if (posts.length <= 1) continue;
+
+        // Sort by creation date, keep oldest
+        posts.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        const postsToReschedule = posts.slice(1); // Skip first, reschedule rest
+
+        logger.info(`Found ${postsToReschedule.length} duplicate(s) at ${slotKey} for integration ${integrationId}`);
+        console.log(`Found ${postsToReschedule.length} duplicate(s) at ${slotKey} for integration ${integrationId}`);
+
+        // Reschedule each duplicate post
+        for (const post of postsToReschedule) {
+          try {
+            const currentDate = dayjs(post.publishDate);
+            const nextSlot = await this._postsRepository.getNextAvailableSlots(
+              post.organizationId,
+              integrationId,
+              currentDate.toDate(),
+              1
+            );
+
+            if (nextSlot.length > 0) {
+              await this._postsRepository.changeDate(
+                post.organizationId,
+                post.id,
+                nextSlot[0].toISOString()
+              );
+              
+              logger.info(`Rescheduled duplicate post ${post.id} from ${currentDate.format()} to ${nextSlot[0].format()}`);
+              console.log(`Successfully rescheduled post ${post.id} from ${currentDate.format('YYYY-MM-DD HH:mm')} to ${nextSlot[0].format('YYYY-MM-DD HH:mm')}`);
+              rescheduledCount++;
+            }
+          } catch (err) {
+            logger.error(`Failed to reschedule duplicate post ${post.id}: ${err instanceof Error ? err.message : String(err)}`);
+            console.error(`Failed to reschedule post ${post.id}:`, err);
+          }
+        }
+      }
+
+      return { rescheduled: rescheduledCount };
+    } catch (err) {
+      Sentry.captureException(err, {
+        extra: {
+          context: 'Failed to resolve duplicates',
+          integrationId,
+        },
+      });
+      logger.error(`Error resolving duplicates for integration ${integrationId}: ${err instanceof Error ? err.message : String(err)}`);
+      return { rescheduled: 0 };
+    }
+  }
+
   async checkAndRescheduleMissedPosts() {
     const { logger } = Sentry;
     logger.info('Checking for duplicate post schedules on startup...');
@@ -888,7 +964,7 @@ export class IntegrationService {
         try {
           const integration = await this._integrationRepository.getIntegrationByIdOnly(integrationId);
           if (integration) {
-            const result = await this.rescheduleMissedPostsForIntegration(integrationId, integration);
+            const result = await this.resolveDuplicatesForIntegration(integrationId, integration);
             totalRescheduled += result.rescheduled;
           }
         } catch (err) {
