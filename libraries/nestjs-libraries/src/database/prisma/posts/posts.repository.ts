@@ -852,4 +852,4 @@ export class PostsRepository {
         createdAt: 'asc', // Keep the oldest post, reschedule newer ones
       },
     });
-  }
+  }}
