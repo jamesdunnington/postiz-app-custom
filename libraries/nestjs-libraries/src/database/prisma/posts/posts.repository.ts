@@ -343,13 +343,14 @@ export class PostsRepository {
         },
         deletedAt: null,
         state: {
-          in: ['QUEUE', 'DRAFT'],
+          in: ['QUEUE', 'DRAFT', 'PUBLISHED'],
         },
         ...(excludePostId ? { id: { not: excludePostId } } : {}),
       },
       select: {
         id: true,
         publishDate: true,
+        state: true,
       },
     });
   }
@@ -950,7 +951,9 @@ export class PostsRepository {
                 lt: endOfMinute,
               },
               deletedAt: null,
-              state: 'QUEUE',
+              state: {
+                in: ['QUEUE', 'PUBLISHED'],
+              },
             },
           });
 
@@ -999,7 +1002,9 @@ export class PostsRepository {
                   lt: endOfMinute,
                 },
                 deletedAt: null,
-                state: 'QUEUE',
+                state: {
+                  in: ['QUEUE', 'PUBLISHED'],
+                },
               },
             });
 
