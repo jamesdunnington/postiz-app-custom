@@ -768,6 +768,7 @@ export class PostsRepository {
     
     const slots: Date[] = [];
     const usedTimestamps = new Set<number>(); // Track timestamps to prevent duplicates
+    let daysChecked = 0; // Track days checked for logging
     
     if (searchFromEnd) {
       // For duplicate resolution: find the last occupied slot first, then continue from there
@@ -792,7 +793,6 @@ export class PostsRepository {
       
       let currentDay = startDay;
       const maxDaysToCheck = 90;
-      let daysChecked = 0;
 
       while (slots.length < count && daysChecked < maxDaysToCheck) {
       for (const { time } of postingTimes) {
@@ -842,7 +842,6 @@ export class PostsRepository {
       // Original logic: search from now
       let currentDay = dayjs.utc();
       const maxDaysToCheck = 90;
-      let daysChecked = 0;
 
       while (slots.length < count && daysChecked < maxDaysToCheck) {
         for (const { time } of postingTimes) {
