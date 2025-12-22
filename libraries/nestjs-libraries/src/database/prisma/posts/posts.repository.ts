@@ -787,7 +787,8 @@ export class PostsRepository {
       });
       
       const startDay = lastPost ? dayjs.utc(lastPost.publishDate).add(1, 'day').startOf('day') : dayjs.utc();
-      console.log(`[getNextAvailableSlots] Starting search from ${startDay.format('YYYY-MM-DD')} (after last scheduled post)`);
+      console.log(`[getNextAvailableSlots] Starting search from ${startDay.format('YYYY-MM-DD')} (after last scheduled post at ${lastPost ? dayjs.utc(lastPost.publishDate).format('YYYY-MM-DD HH:mm') : 'N/A'})`);
+      console.log(`[getNextAvailableSlots] Will search using configured posting times: ${postingTimes.slice(0, 3).map(t => `${Math.floor(t.time/60)}:${String(t.time%60).padStart(2,'0')}`).join(', ')}...`);
       
       let currentDay = startDay;
       const maxDaysToCheck = 90;
