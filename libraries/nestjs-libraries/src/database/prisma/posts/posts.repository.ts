@@ -1156,4 +1156,71 @@ export class PostsRepository {
     console.log(`[getPostsByIntegrationAndDate] Found ${posts.length} posts`);
     return posts;
   }
+
+  // Find PUBLISHED posts scheduled for future dates (anomaly detection)
+  async findFuturePublishedPosts(orgId?: string) {
+    const now = dayjs.utc().toDate();
+    
+    return this._post.model.post.findMany({
+      where: {
+        state: 'PUBLISHED',
+        publishDate: {
+          gt: now, // Future dates
+        },
+        deletedAt: null,
+        ...(orgId ? { organizationId: orgId } : {}),
+      },
+      select: {
+        id: true,
+        publishDate: true,
+        integrationId: true,
+        organizationId: true,
+        createdAt: true,
+        releaseURL: true,
+        integration: {
+          select: {
+            name: true,
+            providerIdentifier: true,
+          },
+        },
+      },
+      orderBy: {
+        publishDate: 'asc',
+      },
+    });
+  }
+
+  // Delete future PUBLISHED posts (cleanup anomalies)
+  async deleteFuturePublishedPosts(orgId?: string) {
+    const now = dayjs.utc().toDate();
+    
+    console.log(`[deleteFuturePublishedPosts] Searching for PUBLISHED posts with future dates...`);
+    
+    const posts = await this.findFuturePublishedPosts(orgId);
+    
+    if (posts.length === 0) {
+      console.log(`[deleteFuturePublishedPosts] No future PUBLISHED posts found.`);
+      return { deleted: 0, posts: [] };
+    }
+    
+    console.log(`[deleteFuturePublishedPosts] Found ${posts.length} future PUBLISHED posts to delete:`);
+    posts.forEach(p => {
+      console.log(`  - Post ${p.id.substring(0, 8)}... scheduled for ${dayjs(p.publishDate).format('YYYY-MM-DD HH:mm')} on ${p.integration?.name}`);
+    });
+    
+    const postIds = posts.map(p => p.id);
+    
+    await this._post.model.post.updateMany({
+      where: {
+        id: { in: postIds },
+      },
+      data: {
+        deletedAt: new Date(),
+      },
+    });
+    
+    console.log(`[deleteFuturePublishedPosts] Successfully deleted ${posts.length} future PUBLISHED posts.`);
+    
+    return { deleted: posts.length, posts };
+  }
 }

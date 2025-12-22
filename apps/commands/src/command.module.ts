@@ -7,11 +7,12 @@ import { BullMqModule } from '@gitroom/nestjs-libraries/bull-mq-transport-new/bu
 import { ConfigurationTask } from './tasks/configuration';
 import { AgentRun } from './tasks/agent.run';
 import { AgentModule } from '@gitroom/nestjs-libraries/agent/agent.module';
+import { CleanupFuturePublished } from './tasks/cleanup.future.published';
 
 @Module({
   imports: [ExternalCommandModule, DatabaseModule, BullMqModule, AgentModule],
   controllers: [],
-  providers: [CheckStars, RefreshTokens, ConfigurationTask, AgentRun],
+  providers: [CheckStars, RefreshTokens, ConfigurationTask, AgentRun, CleanupFuturePublished],
   get exports() {
     return [...this.imports, ...this.providers];
   },
