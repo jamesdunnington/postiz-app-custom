@@ -776,11 +776,13 @@ export class IntegrationService {
       
       for (const post of missedPosts) {
         // Get next available slot that hasn't been used yet in this batch
+        // Search from end: move missed posts to the end of schedule instead of next available hour
         const availableSlot = await this._postsRepository.getNextAvailableSlots(
           post.organizationId,
           integrationId,
           1, // Get one slot at a time
-          postingTimes
+          postingTimes,
+          true // searchFromEnd: move to end of schedule
         );
 
         if (availableSlot.length === 0) {
