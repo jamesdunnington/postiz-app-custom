@@ -880,6 +880,31 @@ export class PostsRepository {
     if (duplicateSlots.length > 0) {
       console.log(`[findDuplicateSchedules] Duplicate slots detail:`, JSON.stringify(duplicateSlots.slice(0, 5), null, 2));
     }
+    
+    // Diagnostic: Show posting schedule for first few integrations
+    const integrationSchedule = new Map<string, any[]>();
+    for (const post of posts.slice(0, 200)) { // Check first 200 posts
+      if (!integrationSchedule.has(post.integrationId)) {
+        integrationSchedule.set(post.integrationId, []);
+      }
+      integrationSchedule.get(post.integrationId)!.push({
+        id: post.id,
+        time: dayjs(post.publishDate).format('YYYY-MM-DD HH:mm:ss')
+      });
+    }
+    
+    // Show integrations with multiple posts soon
+    const integrationsToPrint = Array.from(integrationSchedule.entries())
+      .filter(([_, posts]) => posts.length >= 2)
+      .slice(0, 3);
+    
+    if (integrationsToPrint.length > 0) {
+      console.log(`[findDuplicateSchedules] Sample integration schedules (first 5 posts each):`);
+      for (const [integrationId, posts] of integrationsToPrint) {
+        console.log(`  Integration ${integrationId}:`, posts.slice(0, 5).map(p => p.time).join(', '));
+      }
+    }
+    
     return duplicates;
   }
 
