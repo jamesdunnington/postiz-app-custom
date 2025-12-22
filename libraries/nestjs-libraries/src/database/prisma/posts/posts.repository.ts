@@ -325,14 +325,98 @@ export class PostsRepository {
     return update;
   }
 
+  async checkForDuplicateAtTime(
+    integrationId: string,
+    publishDate: Date,
+    excludePostId?: string
+  ) {
+    const targetMinute = dayjs(publishDate).second(0).millisecond(0);
+    const startOfMinute = targetMinute.toDate();
+    const endOfMinute = targetMinute.add(1, 'minute').toDate();
+
+    return this._post.model.post.findFirst({
+      where: {
+        integrationId,
+        publishDate: {
+          gte: startOfMinute,
+          lt: endOfMinute,
+        },
+        deletedAt: null,
+        state: {
+          in: ['QUEUE', 'DRAFT'],
+        },
+        ...(excludePostId ? { id: { not: excludePostId } } : {}),
+      },
+      select: {
+        id: true,
+        publishDate: true,
+      },
+    });
+  }
+
   async changeDate(orgId: string, id: string, date: string) {
+    // Get the post to check its integration
+    const post = await this._post.model.post.findUnique({
+      where: { id },
+      select: {
+        integrationId: true,
+        state: true,
+        integration: {
+          select: {
+            postingTimes: true,
+          },
+        },
+      },
+    });
+
+    if (!post) {
+      throw new Error(`Post ${id} not found`);
+    }
+
+    let finalPublishDate = dayjs(date).toDate();
+
+    // Check for duplicate if post is QUEUE or DRAFT
+    if (post.state === 'QUEUE' || post.state === 'DRAFT') {
+      const existingPost = await this.checkForDuplicateAtTime(
+        post.integrationId,
+        finalPublishDate,
+        id // Exclude current post
+      );
+
+      if (existingPost) {
+        console.log(
+          `[changeDate] Duplicate detected at ${dayjs(finalPublishDate).format('YYYY-MM-DD HH:mm')} ` +
+          `for integration ${post.integrationId}. Auto-rescheduling to next available slot.`
+        );
+
+        const postingTimes = post.integration?.postingTimes as number[] || [];
+
+        if (postingTimes.length > 0) {
+          const availableSlots = await this.getNextAvailableSlots(
+            orgId,
+            post.integrationId,
+            1,
+            postingTimes,
+            true // searchFromEnd
+          );
+
+          if (availableSlots.length > 0) {
+            finalPublishDate = availableSlots[0];
+            console.log(
+              `[changeDate] Rescheduled to ${dayjs(finalPublishDate).format('YYYY-MM-DD HH:mm')}`
+            );
+          }
+        }
+      }
+    }
+
     return this._post.model.post.update({
       where: {
         organizationId: orgId,
         id,
       },
       data: {
-        publishDate: dayjs(date).toDate(),
+        publishDate: finalPublishDate,
       },
     });
   }
@@ -371,8 +455,51 @@ export class PostsRepository {
     const uuid = uuidv4();
 
     for (const value of body.value) {
+      // Check for duplicate schedule and auto-reschedule if needed
+      let finalPublishDate = dayjs(date).toDate();
+      
+      if (state === 'schedule' && body.integration?.id) {
+        const existingPost = await this.checkForDuplicateAtTime(
+          body.integration.id,
+          finalPublishDate,
+          value.id // Exclude current post if updating
+        );
+        
+        if (existingPost) {
+          console.log(
+            `[createOrUpdatePost] Duplicate detected at ${dayjs(finalPublishDate).format('YYYY-MM-DD HH:mm')} ` +
+            `for integration ${body.integration.id}. Auto-rescheduling to end of schedule.`
+          );
+          
+          // Get posting times for this integration
+          const integration = await this._post.model.integration.findUnique({
+            where: { id: body.integration.id },
+            select: { postingTimes: true },
+          });
+          
+          const postingTimes = integration?.postingTimes as number[] || [];
+          
+          if (postingTimes.length > 0) {
+            const availableSlots = await this.getNextAvailableSlots(
+              orgId,
+              body.integration.id,
+              1,
+              postingTimes,
+              true // searchFromEnd
+            );
+            
+            if (availableSlots.length > 0) {
+              finalPublishDate = availableSlots[0];
+              console.log(
+                `[createOrUpdatePost] Rescheduled to ${dayjs(finalPublishDate).format('YYYY-MM-DD HH:mm')}`
+              );
+            }
+          }
+        }
+      }
+      
       const updateData = (type: 'create' | 'update') => ({
-        publishDate: dayjs(date).toDate(),
+        publishDate: finalPublishDate,
         integration: {
           connect: {
             id: body.integration.id,
@@ -900,10 +1027,13 @@ export class PostsRepository {
     
     console.log(`[findDuplicateSchedules] Searching for duplicates from ${startOfToday.toISOString()} onwards`);
     
-    // Get all QUEUE posts from today onwards with full details needed for rescheduling
+    // Get all QUEUE/PUBLISHED posts from today onwards to detect all duplicates
+    // (including ones that already posted, to identify the root cause)
     const posts = await this._post.model.post.findMany({
       where: {
-        state: 'QUEUE',
+        state: {
+          in: ['QUEUE', 'PUBLISHED'],
+        },
         deletedAt: null,
         publishDate: {
           gte: startOfToday, // Start from beginning of today, not just future posts
@@ -949,9 +1079,10 @@ export class PostsRepository {
       }
     }
 
-    console.log(`[findDuplicateSchedules] Found ${posts.length} total QUEUE posts, ${duplicates.length} are duplicates across ${grouped.size} timeslots`);
+    console.log(`[findDuplicateSchedules] Found ${posts.length} total posts (QUEUE/PUBLISHED), ${duplicates.length} are duplicates across ${grouped.size} timeslots`);
     if (duplicateSlots.length > 0) {
       console.log(`[findDuplicateSchedules] Duplicate slots detail:`, JSON.stringify(duplicateSlots.slice(0, 5), null, 2));
+      console.log(`[findDuplicateSchedules] WARNING: Only QUEUE posts will be rescheduled. PUBLISHED duplicates indicate past creation-time issues.`);
     }
     
     // Diagnostic: Show posting schedule for first few integrations
