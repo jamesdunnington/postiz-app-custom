@@ -503,7 +503,38 @@ export class PostsService {
             post.postId,
             post.releaseURL
           );
-        } catch (err) {}
+          console.log(`✓ Post ${post.id} state updated to PUBLISHED after successful publish`);
+        } catch (err) {
+          // CRITICAL: If state update fails, the post will be re-queued by cron causing duplicates
+          console.error(`CRITICAL ERROR: Failed to update post ${post.id} state to PUBLISHED after successful publish. This will cause duplicate posts!`, err);
+          Sentry.captureException(err, {
+            extra: {
+              context: 'Failed to update post state after successful publish',
+              postId: post.id,
+              integrationId: integration.id,
+              releaseURL: post.releaseURL,
+            },
+          });
+          
+          // Retry once immediately
+          try {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            await this._postRepository.updatePost(
+              post.id,
+              post.postId,
+              post.releaseURL
+            );
+            console.log(`✓ Post ${post.id} state updated to PUBLISHED on retry`);
+          } catch (retryErr) {
+            console.error(`CRITICAL: Retry also failed for post ${post.id}`, retryErr);
+            Sentry.captureException(retryErr, {
+              extra: {
+                context: 'Failed to update post state even after retry',
+                postId: post.id,
+              },
+            });
+          }
+        }
       }
 
       try {
