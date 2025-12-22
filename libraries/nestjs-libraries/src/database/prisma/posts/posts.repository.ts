@@ -863,14 +863,23 @@ export class PostsRepository {
 
     // Return all posts from slots that have duplicates (more than 1 post)
     const duplicates = [];
+    const duplicateSlots = [];
     for (const [key, postsInSlot] of grouped.entries()) {
       if (postsInSlot.length > 1) {
+        duplicateSlots.push({
+          key,
+          count: postsInSlot.length,
+          times: postsInSlot.map(p => dayjs(p.publishDate).format('YYYY-MM-DD HH:mm:ss'))
+        });
         // Return all posts in this duplicate slot
         duplicates.push(...postsInSlot);
       }
     }
 
     console.log(`[findDuplicateSchedules] Found ${posts.length} total QUEUE posts, ${duplicates.length} are duplicates across ${grouped.size} timeslots`);
+    if (duplicateSlots.length > 0) {
+      console.log(`[findDuplicateSchedules] Duplicate slots detail:`, JSON.stringify(duplicateSlots.slice(0, 5), null, 2));
+    }
     return duplicates;
   }
 
