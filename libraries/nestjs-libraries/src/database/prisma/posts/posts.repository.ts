@@ -24,7 +24,8 @@ export class PostsRepository {
     private _comments: PrismaRepository<'comments'>,
     private _tags: PrismaRepository<'tags'>,
     private _tagsPosts: PrismaRepository<'tagsPosts'>,
-    private _errors: PrismaRepository<'errors'>
+    private _errors: PrismaRepository<'errors'>,
+    private _integrations: PrismaRepository<'integration'>
   ) {}
 
   checkPending15minutesBack() {
@@ -390,7 +391,10 @@ export class PostsRepository {
           `for integration ${post.integrationId}. Auto-rescheduling to next available slot.`
         );
 
-        const postingTimes = post.integration?.postingTimes as number[] || [];
+        const postingTimesRaw = (post.integration?.postingTimes as any) || [];
+        const postingTimes = Array.isArray(postingTimesRaw) 
+          ? postingTimesRaw.map((t: any) => typeof t === 'number' ? { time: t } : t)
+          : [];
 
         if (postingTimes.length > 0) {
           const availableSlots = await this.getNextAvailableSlots(
@@ -473,12 +477,15 @@ export class PostsRepository {
           );
           
           // Get posting times for this integration
-          const integration = await this._post.model.integration.findUnique({
+          const integration = await this._integrations.model.integration.findUnique({
             where: { id: body.integration.id },
             select: { postingTimes: true },
           });
           
-          const postingTimes = integration?.postingTimes as number[] || [];
+          const postingTimesRaw = (integration?.postingTimes as any) || [];
+          const postingTimes = Array.isArray(postingTimesRaw) 
+            ? postingTimesRaw.map((t: any) => typeof t === 'number' ? { time: t } : t)
+            : [];
           
           if (postingTimes.length > 0) {
             const availableSlots = await this.getNextAvailableSlots(
