@@ -760,18 +760,40 @@ export class PostsRepository {
     orgId: string,
     integrationId: string,
     count: number,
-    postingTimes: { time: number }[]
+    postingTimes: { time: number }[],
+    searchFromEnd: boolean = false
   ) {
-    console.log(`[getNextAvailableSlots] Looking for ${count} slot(s) for integration ${integrationId}`);
+    console.log(`[getNextAvailableSlots] Looking for ${count} slot(s) for integration ${integrationId}, searchFromEnd: ${searchFromEnd}`);
     console.log(`[getNextAvailableSlots] Has ${postingTimes.length} posting times configured`);
     
     const slots: Date[] = [];
     const usedTimestamps = new Set<number>(); // Track timestamps to prevent duplicates
-    let currentDay = dayjs.utc();
-    const maxDaysToCheck = 90; // Check up to 90 days ahead (increased from 30)
-    let daysChecked = 0;
+    
+    if (searchFromEnd) {
+      // For duplicate resolution: find the last occupied slot first, then continue from there
+      const lastPost = await this._post.model.post.findFirst({
+        where: {
+          integrationId,
+          organizationId: orgId,
+          state: 'QUEUE',
+          deletedAt: null,
+        },
+        orderBy: {
+          publishDate: 'desc'
+        },
+        select: {
+          publishDate: true
+        }
+      });
+      
+      const startDay = lastPost ? dayjs.utc(lastPost.publishDate).add(1, 'day').startOf('day') : dayjs.utc();
+      console.log(`[getNextAvailableSlots] Starting search from ${startDay.format('YYYY-MM-DD')} (after last scheduled post)`);
+      
+      let currentDay = startDay;
+      const maxDaysToCheck = 90;
+      let daysChecked = 0;
 
-    while (slots.length < count && daysChecked < maxDaysToCheck) {
+      while (slots.length < count && daysChecked < maxDaysToCheck) {
       for (const { time } of postingTimes) {
         if (slots.length >= count) break;
 
@@ -812,8 +834,59 @@ export class PostsRepository {
         }
       }
 
-      currentDay = currentDay.add(1, 'day');
-      daysChecked++;
+        currentDay = currentDay.add(1, 'day');
+        daysChecked++;
+      }
+    } else {
+      // Original logic: search from now
+      let currentDay = dayjs.utc();
+      const maxDaysToCheck = 90;
+      let daysChecked = 0;
+
+      while (slots.length < count && daysChecked < maxDaysToCheck) {
+        for (const { time } of postingTimes) {
+          if (slots.length >= count) break;
+
+          const hours = Math.floor(time / 60);
+          const minutes = time % 60;
+          const slotTime = currentDay.hour(hours).minute(minutes).second(0).millisecond(0);
+          const slotTimestamp = slotTime.valueOf();
+
+          // Only consider future slots
+          if (slotTime.isAfter(dayjs.utc())) {
+            // Check if this slot timestamp has already been assigned in this session
+            if (usedTimestamps.has(slotTimestamp)) {
+              continue;
+            }
+
+            // Check if this slot is already occupied in the database (at minute-level precision)
+            const slotDate = slotTime.toDate();
+            const endOfMinute = slotTime.add(1, 'minute').toDate();
+            
+            const existingPost = await this._post.model.post.findFirst({
+              where: {
+                integrationId,
+                organizationId: orgId,
+                publishDate: {
+                  gte: slotDate,
+                  lt: endOfMinute,
+                },
+                deletedAt: null,
+                state: 'QUEUE',
+              },
+            });
+
+            if (!existingPost) {
+              slots.push(slotTime.toDate());
+              usedTimestamps.add(slotTimestamp); // Mark this timestamp as used
+              console.log(`[getNextAvailableSlots] Found available slot: ${slotTime.format('YYYY-MM-DD HH:mm')}`);
+            }
+          }
+        }
+
+        currentDay = currentDay.add(1, 'day');
+        daysChecked++;
+      }
     }
 
     console.log(`[getNextAvailableSlots] Found ${slots.length} slot(s) after checking ${daysChecked} days`);

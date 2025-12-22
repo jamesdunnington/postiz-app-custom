@@ -906,7 +906,8 @@ export class IntegrationService {
               post.organizationId,
               integrationId,
               1,
-              postingTimes
+              postingTimes,
+              true // Search from end: move duplicates to the end of schedule
             );
 
             if (nextSlot.length > 0) {
