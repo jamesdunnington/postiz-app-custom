@@ -1045,6 +1045,7 @@ export class PostsRepository {
         organizationId: true,
         publishDate: true,
         createdAt: true,
+        state: true,
       },
       orderBy: {
         createdAt: 'asc', // Oldest first
@@ -1064,25 +1065,37 @@ export class PostsRepository {
       grouped.get(key)!.push(post);
     }
 
-    // Return all posts from slots that have duplicates (more than 1 post)
+    // Return ONLY QUEUE posts from slots that have duplicates
+    // PUBLISHED posts are logged for diagnostics but NEVER rescheduled
     const duplicates = [];
     const duplicateSlots = [];
+    const publishedDuplicateCount = { total: 0 };
+    
     for (const [key, postsInSlot] of grouped.entries()) {
       if (postsInSlot.length > 1) {
+        const queuePosts = postsInSlot.filter(p => p.state === 'QUEUE');
+        const publishedPosts = postsInSlot.filter(p => p.state === 'PUBLISHED');
+        
         duplicateSlots.push({
           key,
-          count: postsInSlot.length,
+          total: postsInSlot.length,
+          queue: queuePosts.length,
+          published: publishedPosts.length,
           times: postsInSlot.map(p => dayjs(p.publishDate).format('YYYY-MM-DD HH:mm:ss'))
         });
-        // Return all posts in this duplicate slot
-        duplicates.push(...postsInSlot);
+        
+        // ONLY return QUEUE posts for rescheduling - NEVER PUBLISHED
+        duplicates.push(...queuePosts);
+        publishedDuplicateCount.total += publishedPosts.length;
       }
     }
 
-    console.log(`[findDuplicateSchedules] Found ${posts.length} total posts (QUEUE/PUBLISHED), ${duplicates.length} are duplicates across ${grouped.size} timeslots`);
+    console.log(`[findDuplicateSchedules] Found ${posts.length} total posts (QUEUE/PUBLISHED), ${duplicates.length} QUEUE duplicates will be rescheduled`);
+    if (publishedDuplicateCount.total > 0) {
+      console.log(`[findDuplicateSchedules] WARNING: Found ${publishedDuplicateCount.total} PUBLISHED duplicates (already posted, cannot reschedule)`);
+    }
     if (duplicateSlots.length > 0) {
       console.log(`[findDuplicateSchedules] Duplicate slots detail:`, JSON.stringify(duplicateSlots.slice(0, 5), null, 2));
-      console.log(`[findDuplicateSchedules] WARNING: Only QUEUE posts will be rescheduled. PUBLISHED duplicates indicate past creation-time issues.`);
     }
     
     // Diagnostic: Show posting schedule for first few integrations
