@@ -393,8 +393,8 @@ export const LaunchesComponent = () => {
   const sortedIntegrations = useMemo(() => {
     return orderBy(
       integrations,
-      ['type', 'disabled', 'identifier'],
-      ['desc', 'asc', 'asc']
+      ['name', 'createdAt'],
+      ['asc', 'asc']
     );
   }, [integrations]);
   const menuIntegrations = useMemo(() => {
@@ -407,8 +407,8 @@ export const LaunchesComponent = () => {
         isEmpty: p.length === 0,
         values: orderBy(
           p,
-          ['type', 'disabled', 'identifier'],
-          ['desc', 'asc', 'asc']
+          ['name', 'createdAt'],
+          ['asc', 'asc']
         ),
       })),
       ['isEmpty', 'name'],

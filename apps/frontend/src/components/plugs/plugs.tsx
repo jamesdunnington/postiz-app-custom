@@ -64,8 +64,8 @@ export const Plugs = () => {
         )
       ),
       // data.filter((integration) => !integration.disabled),
-      ['type', 'disabled', 'identifier'],
-      ['desc', 'asc', 'asc']
+      ['name', 'createdAt'],
+      ['asc', 'asc']
     );
   }, [data, plugList]);
   const currentIntegration = useMemo(() => {

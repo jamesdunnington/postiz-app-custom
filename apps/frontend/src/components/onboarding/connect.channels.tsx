@@ -180,8 +180,8 @@ export const ConnectChannels: FC = () => {
   const sortedIntegrations = useMemo(() => {
     return orderBy(
       integrations,
-      ['type', 'disabled', 'identifier'],
-      ['desc', 'asc', 'asc']
+      ['name', 'createdAt'],
+      ['asc', 'asc']
     );
   }, [integrations]);
   useEffect(() => {

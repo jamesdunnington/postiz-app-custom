@@ -461,6 +461,10 @@ export class IntegrationRepository {
       include: {
         customer: true,
       },
+      orderBy: [
+        { name: 'asc' },
+        { createdAt: 'asc' },
+      ],
     });
   }
 
