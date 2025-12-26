@@ -181,7 +181,7 @@ export const Menu: FC<{
       // Refresh the integration list to show updated status
       onChange(false);
     } catch (error) {
-      toast.show('Error checking connection', 'error');
+      toast.show('Failed to check connection', 'warning');
     }
   }, [id, onChange]);
 
