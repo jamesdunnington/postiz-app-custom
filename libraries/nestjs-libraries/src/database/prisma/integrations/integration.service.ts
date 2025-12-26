@@ -1003,4 +1003,88 @@ export class IntegrationService {
       console.error('Error during startup duplicate check:', err);
     }
   }
+
+  async checkIntegrationConnection(orgId: string, integrationId: string) {
+    const { logger } = Sentry;
+    
+    const integration = await this._integrationRepository.getIntegrationById(
+      orgId,
+      integrationId
+    );
+
+    if (!integration) {
+      throw new HttpException('Integration not found', HttpStatus.NOT_FOUND);
+    }
+
+    const provider = this._integrationManager.getSocialIntegration(
+      integration.providerIdentifier
+    );
+
+    if (!provider) {
+      throw new HttpException(
+        'Provider not supported',
+        HttpStatus.BAD_REQUEST
+      );
+    }
+
+    try {
+      // Attempt to refresh the token to verify connection
+      const result = await this.refreshToken(provider, integration.refreshToken!);
+
+      if (!result) {
+        // Connection failed - mark as needing refresh
+        await this._integrationRepository.refreshNeeded(orgId, integrationId);
+        await this.informAboutRefreshError(orgId, integration);
+
+        logger.warn(`Manual check failed for integration ${integrationId}`);
+        
+        return {
+          connected: false,
+          message: 'Connection failed. The integration has been disconnected by the platform. Please reconnect.',
+          refreshNeeded: true,
+        };
+      }
+
+      // Connection successful - update tokens and mark as good
+      const { refreshToken, accessToken, expiresIn } = result;
+      await this.createOrUpdateIntegration(
+        undefined,
+        !!provider.oneTimeToken,
+        orgId,
+        integration.name,
+        integration.picture!,
+        'social',
+        integration.internalId,
+        integration.providerIdentifier,
+        accessToken,
+        refreshToken,
+        expiresIn
+      );
+
+      logger.info(`Manual check successful for integration ${integrationId}`);
+      
+      return {
+        connected: true,
+        message: 'Connection is active and working properly.',
+        refreshNeeded: false,
+      };
+    } catch (err) {
+      // Connection check failed
+      await this._integrationRepository.refreshNeeded(orgId, integrationId);
+      await this.informAboutRefreshError(
+        orgId,
+        integration,
+        err instanceof Error ? err.message : ''
+      );
+
+      logger.error(`Manual check error for integration ${integrationId}: ${err instanceof Error ? err.message : String(err)}`);
+      
+      return {
+        connected: false,
+        message: 'Connection check failed. Please reconnect the integration.',
+        refreshNeeded: true,
+        error: err instanceof Error ? err.message : 'Unknown error',
+      };
+    }
+  }
 }

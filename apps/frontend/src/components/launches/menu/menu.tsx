@@ -157,6 +157,35 @@ export const Menu: FC<{
     []
   );
 
+  const checkConnection = useCallback(async () => {
+    setShow(false);
+    toast.show('Checking connection...', 'info');
+    
+    try {
+      const response = await fetch(`/integrations/${id}/check-connection`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        toast.show('Failed to check connection', 'error');
+        return;
+      }
+
+      const result = await response.json();
+
+      if (result.connected) {
+        toast.show(result.message, 'success');
+      } else {
+        toast.show(result.message, 'warning');
+      }
+
+      // Refresh the integration list to show updated status
+      onChange(false);
+    } catch (error) {
+      toast.show('Error checking connection', 'error');
+    }
+  }, [id, onChange]);
+
   const createPost = useCallback(
     (integration: Integrations) => async () => {
       setShow(false);
@@ -360,6 +389,30 @@ export const Menu: FC<{
             </div>
             <div className="text-[14px]">{t('copy_id', 'Copy Channel ID')}</div>
           </div>
+          {canDisable && (
+            <div
+              className="flex gap-[12px] items-center py-[8px] px-[10px]"
+              onClick={checkConnection}
+            >
+              <div>
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 32 32"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M16 3C8.832 3 3 8.832 3 16C3 23.168 8.832 29 16 29C23.168 29 29 23.168 29 16C29 8.832 23.168 3 16 3ZM16 27C9.935 27 5 22.065 5 16C5 9.935 9.935 5 16 5C22.065 5 27 9.935 27 16C27 22.065 22.065 27 16 27ZM21.707 11.293L14 19L10.293 15.293C9.902 14.902 9.269 14.902 8.879 15.293C8.488 15.684 8.488 16.316 8.879 16.707L13.293 21.121C13.488 21.316 13.744 21.414 14 21.414C14.256 21.414 14.512 21.316 14.707 21.121L23.121 12.707C23.512 12.316 23.512 11.684 23.121 11.293C22.731 10.902 22.098 10.902 21.707 11.293Z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </div>
+              <div className="text-[14px]">
+                {t('check_connection', 'Check Connection')}
+              </div>
+            </div>
+          )}
           {canDisable &&
             findIntegration?.refreshNeeded &&
             !findIntegration.customFields && (

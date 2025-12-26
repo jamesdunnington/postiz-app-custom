@@ -626,4 +626,13 @@ export class IntegrationsController {
   async getUpdates(@Query() query: { word: string; id?: number }) {
     return new TelegramProvider().getBotId(query);
   }
+
+  @Post('/:id/check-connection')
+  @UseFilters(NotEnoughScopesFilter)
+  async checkIntegrationConnection(
+    @Param('id') id: string,
+    @GetOrgFromRequest() org: Organization
+  ) {
+    return this._integrationService.checkIntegrationConnection(org.id, id);
+  }
 }
