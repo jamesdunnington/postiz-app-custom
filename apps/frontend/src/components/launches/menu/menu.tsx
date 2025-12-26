@@ -159,7 +159,6 @@ export const Menu: FC<{
 
   const checkConnection = useCallback(async () => {
     setShow(false);
-    toast.show('Checking connection...', 'info');
     
     try {
       const response = await fetch(`/integrations/${id}/check-connection`, {
@@ -167,7 +166,7 @@ export const Menu: FC<{
       });
 
       if (!response.ok) {
-        toast.show('Failed to check connection', 'error');
+        toast.show('Failed to check connection', 'warning');
         return;
       }
 
