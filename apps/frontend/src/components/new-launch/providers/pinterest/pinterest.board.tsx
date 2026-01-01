@@ -31,11 +31,16 @@ export const PinterestBoard: FC<{
     onChange(event);
   };
   useEffect(() => {
-    customFunc.get('boards').then((data) => setOrgs(data));
-    const settings = getValues()[props.name];
-    if (settings) {
-      setCurrentMedia(settings);
-    }
+    // Load boards and then set the current media value
+    customFunc.get('boards').then((data) => {
+      setOrgs(data);
+      
+      // Set the current board value after boards are loaded
+      const settings = getValues()[props.name];
+      if (settings) {
+        setCurrentMedia(settings);
+      }
+    });
   }, []);
   if (!orgs) {
     return null;
