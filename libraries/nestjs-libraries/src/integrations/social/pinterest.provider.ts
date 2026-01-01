@@ -159,21 +159,40 @@ export class PinterestProvider
 
   @Tool({ description: 'List of boards', dataSchema: [] })
   async boards(accessToken: string) {
-    const { items } = await (
-      await fetch('https://api.pinterest.com/v5/boards', {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      })
-    ).json();
+    let allBoards: any[] = [];
+    let bookmark: string | undefined = undefined;
+    let hasMore = true;
 
-    return (
-      items?.map((item: any) => ({
-        name: item.name,
-        id: item.id,
-      })) || []
-    );
+    // Fetch all boards with pagination
+    while (hasMore) {
+      const url = bookmark
+        ? `https://api.pinterest.com/v5/boards?page_size=250&bookmark=${bookmark}`
+        : 'https://api.pinterest.com/v5/boards?page_size=250';
+
+      const response = await (
+        await fetch(url, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        })
+      ).json();
+
+      if (response.items && response.items.length > 0) {
+        allBoards = allBoards.concat(
+          response.items.map((item: any) => ({
+            name: item.name,
+            id: item.id,
+          }))
+        );
+      }
+
+      // Check if there's a next page
+      bookmark = response.bookmark;
+      hasMore = !!bookmark;
+    }
+
+    return allBoards;
   }
 
   async post(
