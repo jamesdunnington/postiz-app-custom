@@ -162,34 +162,49 @@ export class PinterestProvider
     let allBoards: any[] = [];
     let bookmark: string | undefined = undefined;
     let hasMore = true;
+    let pageCount = 0;
+    const maxPages = 20; // Safety limit to prevent infinite loops
 
-    // Fetch all boards with pagination
-    while (hasMore) {
-      const url = bookmark
-        ? `https://api.pinterest.com/v5/boards?page_size=250&bookmark=${bookmark}`
-        : 'https://api.pinterest.com/v5/boards?page_size=250';
+    try {
+      // Fetch all boards with pagination
+      while (hasMore && pageCount < maxPages) {
+        const url = bookmark
+          ? `https://api.pinterest.com/v5/boards?page_size=250&bookmark=${bookmark}`
+          : 'https://api.pinterest.com/v5/boards?page_size=250';
 
-      const response = await (
-        await fetch(url, {
+        const fetchResponse = await fetch(url, {
           method: 'GET',
           headers: {
             Authorization: `Bearer ${accessToken}`,
           },
-        })
-      ).json();
+        });
 
-      if (response.items && response.items.length > 0) {
-        allBoards = allBoards.concat(
-          response.items.map((item: any) => ({
-            name: item.name,
-            id: item.id,
-          }))
-        );
+        if (!fetchResponse.ok) {
+          console.error('Pinterest boards API error:', fetchResponse.status);
+          break;
+        }
+
+        const response = await fetchResponse.json();
+
+        if (response.items && response.items.length > 0) {
+          allBoards = allBoards.concat(
+            response.items.map((item: any) => ({
+              name: item.name,
+              id: item.id,
+            }))
+          );
+        } else {
+          // No items returned, stop pagination
+          break;
+        }
+
+        // Check if there's a next page
+        bookmark = response.bookmark;
+        hasMore = !!bookmark;
+        pageCount++;
       }
-
-      // Check if there's a next page
-      bookmark = response.bookmark;
-      hasMore = !!bookmark;
+    } catch (error) {
+      console.error('Error fetching Pinterest boards:', error);
     }
 
     return allBoards;

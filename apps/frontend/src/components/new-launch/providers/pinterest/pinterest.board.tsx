@@ -61,7 +61,7 @@ export const PinterestBoard: FC<{
     return 'No boards found, you have to create a board first';
   }
   return (
-    <div className="flex flex-col">
+    <>
       <Select
         name={name}
         label="Select board"
@@ -85,6 +85,6 @@ export const PinterestBoard: FC<{
           ⚠️ The previously selected board is no longer available. Please select a new board.
         </div>
       )}
-    </div>
+    </>
   );
 };
