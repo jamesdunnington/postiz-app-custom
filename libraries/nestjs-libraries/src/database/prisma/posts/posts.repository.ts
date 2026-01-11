@@ -1466,9 +1466,18 @@ export class PostsRepository {
 
         // Convert post time from UTC to user's timezone
         // Database stores in UTC, but posting times are in user's local time
+        // userTimezone is in minutes offset (e.g., -300 for EST, +330 for IST)
         const postTimeUTC = dayjs.utc(post.publishDate);
-        const postTimeInUserTZ = postTimeUTC.add(-userTimezone, 'minute');
+        const postTimeInUserTZ = postTimeUTC.add(userTimezone, 'minute');
         const postTimeInMinutes = postTimeInUserTZ.hour() * 60 + postTimeInUserTZ.minute();
+
+        console.log(
+          `[findPostsAtInvalidTimeSlots] Post ${post.id}: ` +
+          `UTC: ${postTimeUTC.format('HH:mm')}, ` +
+          `UserTZ offset: ${userTimezone}min, ` +
+          `Local: ${postTimeInUserTZ.format('HH:mm')} (${postTimeInMinutes}min), ` +
+          `Slots: ${postingTimes.map((t: { time: number }) => t.time).join(',')}`
+        );
 
         // Check if this time matches any configured time slot (within 1 minute tolerance)
         const isValidTimeSlot = postingTimes.some((slot: { time: number }) => {
