@@ -265,9 +265,6 @@ export const Filters = () => {
     }
   }, [fetch, toast, calendar, isValidating]);
 
-    [setDay, setWeek, setMonth]
-  );
-
   return (
     <div className="text-textColor flex flex-col md:flex-row gap-[8px] items-center select-none">
       <div className="flex flex-grow flex-row items-center gap-[10px]">
