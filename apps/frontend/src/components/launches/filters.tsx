@@ -1,5 +1,4 @@
 'use client';
-// Cache bust: 2026-01-11
 
 import { useCalendar } from '@gitroom/frontend/components/launches/calendar.context';
 import clsx from 'clsx';
@@ -227,9 +226,6 @@ export const Filters = () => {
         setMonth();
       }
     },
-    []
-  );
-
   const validateAllTimeSlots = useCallback(async () => {
     if (isValidating) return;
     
@@ -265,6 +261,9 @@ export const Filters = () => {
       setIsValidating(false);
     }
   }, [fetch, toast, calendar, isValidating]);
+
+    [setDay, setWeek, setMonth]
+  );
 
   return (
     <div className="text-textColor flex flex-col md:flex-row gap-[8px] items-center select-none">
@@ -386,5 +385,4 @@ export const Filters = () => {
       </div>
     </div>
   );
-};
 };
