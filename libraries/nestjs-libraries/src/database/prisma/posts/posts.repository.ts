@@ -1402,7 +1402,7 @@ export class PostsRepository {
     const { logger } = Sentry;
     console.log('[findPostsAtInvalidTimeSlots] Searching for posts at invalid time slots...');
     
-    // Get all scheduled posts with their integrations
+    // Get all scheduled posts with their integrations and user timezone
     const posts = await this._post.model.post.findMany({
       where: {
         state: 'QUEUE',
@@ -1425,6 +1425,20 @@ export class PostsRepository {
             name: true,
             providerIdentifier: true,
             postingTimes: true,
+            organization: {
+              select: {
+                users: {
+                  select: {
+                    user: {
+                      select: {
+                        timezone: true,
+                      },
+                    },
+                  },
+                  take: 1,
+                },
+              },
+            },
           },
         },
       },
@@ -1447,9 +1461,14 @@ export class PostsRepository {
           continue;
         }
 
-        // Get the time of day in minutes for this post
-        const postTime = dayjs(post.publishDate);
-        const postTimeInMinutes = postTime.hour() * 60 + postTime.minute();
+        // Get user's timezone offset (in minutes)
+        const userTimezone = post.integration?.organization?.users?.[0]?.user?.timezone || 0;
+
+        // Convert post time from UTC to user's timezone
+        // Database stores in UTC, but posting times are in user's local time
+        const postTimeUTC = dayjs.utc(post.publishDate);
+        const postTimeInUserTZ = postTimeUTC.add(-userTimezone, 'minute');
+        const postTimeInMinutes = postTimeInUserTZ.hour() * 60 + postTimeInUserTZ.minute();
 
         // Check if this time matches any configured time slot (within 1 minute tolerance)
         const isValidTimeSlot = postingTimes.some((slot: { time: number }) => {
@@ -1462,6 +1481,7 @@ export class PostsRepository {
             ...post,
             postTimeInMinutes,
             configuredTimes: postingTimes.map((t: { time: number }) => t.time),
+            userTimezone,
           });
         }
       } catch (err) {
