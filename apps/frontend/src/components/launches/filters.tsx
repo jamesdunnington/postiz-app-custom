@@ -3,13 +3,11 @@
 import { useCalendar } from '@gitroom/frontend/components/launches/calendar.context';
 import clsx from 'clsx';
 import dayjs from 'dayjs';
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import { SelectCustomer } from '@gitroom/frontend/components/launches/select.customer';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import i18next from 'i18next';
 import { newDayjs } from '@gitroom/frontend/components/layout/set.timezone';
-import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
-import { useToaster } from '@gitroom/react/toaster/toaster';
 
 // Helper function to get start and end dates based on display type
 function getDateRange(
@@ -40,9 +38,6 @@ function getDateRange(
 export const Filters = () => {
   const calendar = useCalendar();
   const t = useT();
-  const fetch = useFetch();
-  const toast = useToaster();
-  const [isValidating, setIsValidating] = useState(false);
 
   // Set dayjs locale based on current language
   const currentLanguage = i18next.resolvedLanguage || 'en';
@@ -226,42 +221,6 @@ export const Filters = () => {
         setMonth();
       }
     },
-  const validateAllTimeSlots = useCallback(async () => {
-    if (isValidating) return;
-    
-    setIsValidating(true);
-    toast.show('Validating all scheduled posts...', 'info');
-    
-    try {
-      const response = await fetch('/integrations/validate-all-timeslots', {
-        method: 'POST',
-      });
-
-      if (!response.ok) {
-        toast.show('Failed to validate time slots', 'warning');
-        setIsValidating(false);
-        return;
-      }
-
-      const result = await response.json();
-
-      if (result.rescheduled > 0) {
-        toast.show(
-          `✓ Rescheduled ${result.rescheduled} of ${result.checked} posts to valid time slots`,
-          'success'
-        );
-        // Refresh calendar to show updated posts
-        calendar.reloadCalendarView();
-      } else {
-        toast.show('✓ All posts are already at valid time slots', 'success');
-      }
-    } catch (error) {
-      toast.show('Failed to validate time slots', 'warning');
-    } finally {
-      setIsValidating(false);
-    }
-  }, [fetch, toast, calendar, isValidating]);
-
     [setDay, setWeek, setMonth]
   );
 
@@ -280,35 +239,12 @@ export const Filters = () => {
               viewBox="0 0 8 12"
               fill="none"
             >
-              <path gap-[8px]">
-            <div
-              onClick={setToday}
-              className="hover:text-textItemFocused hover:bg-boxFocused py-[3px] px-[9px] flex justify-center items-center rounded-[8px] transition-all cursor-pointer text-[14px] bg-newBgColorInner border border-newTableBorder"
-            >
-              Today
-            </div>
-            <div
-              onClick={validateAllTimeSlots}
-              className={clsx(
-                'hover:text-textItemFocused hover:bg-boxFocused py-[3px] px-[9px] flex justify-center items-center gap-[6px] rounded-[8px] transition-all text-[14px] bg-newBgColorInner border border-newTableBorder',
-                isValidating ? 'cursor-wait opacity-60' : 'cursor-pointer'
-              )}
-              title={t('validate_all_time_slots_tooltip', 'Reschedule any posts that are not at configured time slots')}
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                viewBox="0 0 32 32"
-                fill="none"
-                className={isValidating ? 'animate-spin' : ''}
-              >
-                <path
-                  d="M16 2C8.28 2 2 8.28 2 16C2 23.72 8.28 30 16 30C23.72 30 30 23.72 30 16C30 8.28 23.72 2 16 2ZM16 28C9.38 28 4 22.62 4 16C4 9.38 9.38 4 16 4C22.62 4 28 9.38 28 16C28 22.62 22.62 28 16 28ZM22.3 10.3L14 18.6L9.7 14.3C9.3 13.9 8.7 13.9 8.3 14.3C7.9 14.7 7.9 15.3 8.3 15.7L13.3 20.7C13.5 20.9 13.7 21 14 21C14.3 21 14.5 20.9 14.7 20.7L23.7 11.7C24.1 11.3 24.1 10.7 23.7 10.3C23.3 9.9 22.7 9.9 22.3 10.3Z"
-                  fill="currentColor"
-                />
-              </svg>
-              <span>{t('validate_time_slots', 'Validate Time Slots')}</span>okeLinejoin="round"
+              <path
+                d="M6.5 11L1.5 6L6.5 1"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
               />
             </svg>
           </div>
