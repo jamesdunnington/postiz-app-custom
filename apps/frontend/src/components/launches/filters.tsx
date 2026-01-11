@@ -226,6 +226,9 @@ export const Filters = () => {
         setMonth();
       }
     },
+    []
+  );
+
   const validateAllTimeSlots = useCallback(async () => {
     if (isValidating) return;
     
