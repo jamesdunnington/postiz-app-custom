@@ -1230,4 +1230,251 @@ export class PostsRepository {
     
     return { deleted: posts.length, posts };
   }
+
+  // Find posts without images (where image field is empty array or null)
+  async findPostsWithoutImages(orgId?: string) {
+    console.log(`[findPostsWithoutImages] Searching for scheduled posts without images...`);
+    
+    const posts = await this._post.model.post.findMany({
+      where: {
+        state: {
+          in: ['QUEUE', 'DRAFT'], // Only scheduled/draft posts, not published ones
+        },
+        deletedAt: null,
+        parentPostId: null, // Only parent posts, not comment threads
+        ...(orgId ? { organizationId: orgId } : {}),
+      },
+      select: {
+        id: true,
+        publishDate: true,
+        integrationId: true,
+        organizationId: true,
+        content: true,
+        image: true,
+        state: true,
+        group: true,
+        createdAt: true,
+        integration: {
+          select: {
+            name: true,
+            providerIdentifier: true,
+          },
+        },
+      },
+      orderBy: {
+        publishDate: 'asc',
+      },
+    });
+
+    // Filter posts where image is null, empty string, or empty array
+    const postsWithoutImages = posts.filter(post => {
+      if (!post.image) return true; // null or undefined
+      
+      try {
+        const imageArray = JSON.parse(post.image);
+        return !Array.isArray(imageArray) || imageArray.length === 0;
+      } catch {
+        return true; // Invalid JSON, consider as no images
+      }
+    });
+
+    console.log(`[findPostsWithoutImages] Found ${postsWithoutImages.length} posts without images out of ${posts.length} total posts`);
+    
+    return postsWithoutImages;
+  }
+
+  // Find posts with invalid data (missing images and/or missing board ID for Pinterest)
+  async findInvalidPosts(orgId?: string) {
+    console.log(`[findInvalidPosts] Searching for posts with missing images or board IDs...`);
+    
+    const posts = await this._post.model.post.findMany({
+      where: {
+        state: {
+          in: ['QUEUE', 'DRAFT'], // Only scheduled/draft posts
+        },
+        deletedAt: null,
+        parentPostId: null, // Only parent posts
+        ...(orgId ? { organizationId: orgId } : {}),
+      },
+      select: {
+        id: true,
+        publishDate: true,
+        integrationId: true,
+        organizationId: true,
+        content: true,
+        image: true,
+        settings: true,
+        state: true,
+        group: true,
+        createdAt: true,
+        integration: {
+          select: {
+            name: true,
+            providerIdentifier: true,
+          },
+        },
+      },
+      orderBy: {
+        publishDate: 'asc',
+      },
+    });
+
+    // Filter posts with issues
+    const invalidPosts = posts.filter(post => {
+      const isPinterest = post.integration?.providerIdentifier === 'pinterest';
+      let missingImage = false;
+      let missingBoardId = false;
+      
+      // Check for missing image
+      if (!post.image) {
+        missingImage = true;
+      } else {
+        try {
+          const imageArray = JSON.parse(post.image);
+          if (!Array.isArray(imageArray) || imageArray.length === 0) {
+            missingImage = true;
+          }
+        } catch {
+          missingImage = true;
+        }
+      }
+      
+      // Check for missing board ID (Pinterest only)
+      if (isPinterest && post.settings) {
+        try {
+          const settings = JSON.parse(post.settings);
+          if (!settings.board || settings.board === '') {
+            missingBoardId = true;
+          }
+        } catch {
+          missingBoardId = true;
+        }
+      }
+      
+      // Include post if it's missing image OR (is Pinterest AND missing board)
+      return missingImage || missingBoardId;
+    }).map(post => {
+      const isPinterest = post.integration?.providerIdentifier === 'pinterest';
+      let missingImage = false;
+      let missingBoardId = false;
+      
+      // Recalculate flags for return value
+      if (!post.image) {
+        missingImage = true;
+      } else {
+        try {
+          const imageArray = JSON.parse(post.image);
+          if (!Array.isArray(imageArray) || imageArray.length === 0) {
+            missingImage = true;
+          }
+        } catch {
+          missingImage = true;
+        }
+      }
+      
+      if (isPinterest && post.settings) {
+        try {
+          const settings = JSON.parse(post.settings);
+          if (!settings.board || settings.board === '') {
+            missingBoardId = true;
+          }
+        } catch {
+          missingBoardId = true;
+        }
+      }
+      
+      return {
+        ...post,
+        missingImage,
+        missingBoardId,
+        isPinterest,
+      };
+    });
+
+    console.log(`[findInvalidPosts] Found ${invalidPosts.length} invalid posts out of ${posts.length} total posts`);
+    
+    return invalidPosts;
+  }
+
+  // Find posts scheduled at times that don't match integration's configured time slots
+  async findPostsAtInvalidTimeSlots(orgId?: string, integrationId?: string) {
+    const { logger } = Sentry;
+    console.log('[findPostsAtInvalidTimeSlots] Searching for posts at invalid time slots...');
+    
+    // Get all scheduled posts with their integrations
+    const posts = await this._post.model.post.findMany({
+      where: {
+        state: 'QUEUE',
+        deletedAt: null,
+        publishDate: {
+          gt: dayjs.utc().toDate(), // Only future posts
+        },
+        ...(orgId ? { organizationId: orgId } : {}),
+        ...(integrationId ? { integrationId } : {}),
+      },
+      select: {
+        id: true,
+        publishDate: true,
+        integrationId: true,
+        organizationId: true,
+        createdAt: true,
+        integration: {
+          select: {
+            id: true,
+            name: true,
+            providerIdentifier: true,
+            postingTimes: true,
+          },
+        },
+      },
+      orderBy: {
+        publishDate: 'asc',
+      },
+    });
+
+    const invalidPosts = [];
+
+    for (const post of posts) {
+      try {
+        const postingTimesRaw = (post.integration?.postingTimes as any) || [];
+        const postingTimes = Array.isArray(postingTimesRaw) 
+          ? postingTimesRaw.map((t: any) => typeof t === 'number' ? { time: t } : t)
+          : [];
+
+        // Skip if no posting times configured
+        if (postingTimes.length === 0) {
+          continue;
+        }
+
+        // Get the time of day in minutes for this post
+        const postTime = dayjs(post.publishDate);
+        const postTimeInMinutes = postTime.hour() * 60 + postTime.minute();
+
+        // Check if this time matches any configured time slot (within 1 minute tolerance)
+        const isValidTimeSlot = postingTimes.some((slot: { time: number }) => {
+          const diff = Math.abs(slot.time - postTimeInMinutes);
+          return diff <= 1; // Allow 1 minute tolerance for timezone/rounding issues
+        });
+
+        if (!isValidTimeSlot) {
+          invalidPosts.push({
+            ...post,
+            postTimeInMinutes,
+            configuredTimes: postingTimes.map((t: { time: number }) => t.time),
+          });
+        }
+      } catch (err) {
+        logger.error(
+          `Error checking time slot for post ${post.id}: ${err instanceof Error ? err.message : String(err)}`
+        );
+        console.error(`[findPostsAtInvalidTimeSlots] Error for post ${post.id}:`, err);
+      }
+    }
+
+    console.log(
+      `[findPostsAtInvalidTimeSlots] Found ${invalidPosts.length} posts at invalid time slots out of ${posts.length} total scheduled posts`
+    );
+
+    return invalidPosts;
+  }
 }

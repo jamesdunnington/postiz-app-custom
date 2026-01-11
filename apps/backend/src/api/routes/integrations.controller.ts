@@ -635,4 +635,40 @@ export class IntegrationsController {
   ) {
     return this._integrationService.checkIntegrationConnection(org.id, id);
   }
+
+  @Post('/:id/validate-timeslots')
+  async validateAndRescheduleTimeSlots(
+    @Param('id') id: string,
+    @GetOrgFromRequest() org: Organization
+  ) {
+    const result = await this._integrationService.rescheduleInvalidTimeSlots(
+      org.id,
+      id
+    );
+    return {
+      success: true,
+      rescheduled: result.rescheduled,
+      checked: result.checked,
+      message:
+        result.rescheduled > 0
+          ? `Rescheduled ${result.rescheduled} of ${result.checked} posts to valid time slots`
+          : 'All posts are already at valid time slots',
+    };
+  }
+
+  @Post('/validate-all-timeslots')
+  async validateAllTimeSlots(@GetOrgFromRequest() org: Organization) {
+    const result = await this._integrationService.rescheduleInvalidTimeSlots(
+      org.id
+    );
+    return {
+      success: true,
+      rescheduled: result.rescheduled,
+      checked: result.checked,
+      message:
+        result.rescheduled > 0
+          ? `Rescheduled ${result.rescheduled} of ${result.checked} posts to valid time slots`
+          : 'All posts are already at valid time slots',
+    };
+  }
 }

@@ -1004,6 +1004,133 @@ export class IntegrationService {
     }
   }
 
+  async rescheduleInvalidTimeSlots(orgId?: string, integrationId?: string) {
+    const { logger } = Sentry;
+    console.log('[INVALID TIME SLOTS] Starting validation of scheduled post times...');
+    logger.info('Starting validation of scheduled post times');
+
+    try {
+      // Find all posts at invalid time slots
+      const invalidPosts = await this._postsRepository.findPostsAtInvalidTimeSlots(orgId, integrationId);
+
+      if (invalidPosts.length === 0) {
+        console.log('[INVALID TIME SLOTS] ✅ All posts are scheduled at valid time slots');
+        logger.info('All posts are scheduled at valid time slots');
+        return { rescheduled: 0, checked: 0 };
+      }
+
+      console.log(
+        `[INVALID TIME SLOTS] ⚠️ Found ${invalidPosts.length} posts at invalid time slots`
+      );
+      logger.warn(`Found ${invalidPosts.length} posts at invalid time slots`);
+
+      let totalRescheduled = 0;
+      const usedSlots = new Set<number>();
+
+      // Group by integration for efficient processing
+      const byIntegration = new Map<string, typeof invalidPosts>();
+      for (const post of invalidPosts) {
+        if (!byIntegration.has(post.integrationId)) {
+          byIntegration.set(post.integrationId, []);
+        }
+        byIntegration.get(post.integrationId)!.push(post);
+      }
+
+      // Process each integration
+      for (const [intId, posts] of byIntegration.entries()) {
+        console.log(
+          `[INVALID TIME SLOTS] Processing ${posts.length} posts for integration ${posts[0].integration?.name || intId}`
+        );
+
+        for (const post of posts) {
+          try {
+            const postingTimes = post.configuredTimes.map((time: number) => ({ time }));
+
+            // Get next available slot at the end of schedule
+            const availableSlot = await this._postsRepository.getNextAvailableSlots(
+              post.organizationId,
+              post.integrationId,
+              1,
+              postingTimes,
+              true // searchFromEnd - move to end of schedule
+            );
+
+            if (availableSlot.length === 0) {
+              logger.warn(
+                `No available slot found for post ${post.id} at invalid time slot`
+              );
+              console.log(
+                `[INVALID TIME SLOTS] ⚠️ No available slot for post ${post.id}`
+              );
+              continue;
+            }
+
+            const newSlot = availableSlot[0];
+            const slotTimestamp = dayjs(newSlot).valueOf();
+
+            // Skip if we've already used this slot in this session
+            if (usedSlots.has(slotTimestamp)) {
+              continue;
+            }
+
+            // Update the post's publish date
+            await this._postsRepository.updatePostPublishDate(post.id, newSlot);
+            usedSlots.add(slotTimestamp);
+
+            // Re-queue the post in the worker
+            this._workerServiceProducer.emit('post', {
+              id: post.id,
+              options: {
+                delay: dayjs(newSlot).diff(dayjs(), 'millisecond'),
+              },
+              payload: {
+                id: post.id,
+              },
+            });
+
+            totalRescheduled++;
+            console.log(
+              `[INVALID TIME SLOTS] ✓ Rescheduled post ${post.id} from ${dayjs(post.publishDate).format('HH:mm')} (invalid) to ${dayjs(newSlot).format('YYYY-MM-DD HH:mm')} (valid)`
+            );
+            logger.info(
+              `Rescheduled post ${post.id} from invalid time ${dayjs(post.publishDate).format('HH:mm')} to valid time slot ${dayjs(newSlot).format('YYYY-MM-DD HH:mm')}`
+            );
+          } catch (err) {
+            logger.error(
+              `Failed to reschedule post ${post.id} at invalid time slot: ${err instanceof Error ? err.message : String(err)}`
+            );
+            console.error(
+              `[INVALID TIME SLOTS] ❌ Error rescheduling post ${post.id}:`,
+              err
+            );
+          }
+        }
+      }
+
+      console.log(
+        `[INVALID TIME SLOTS] ✅ Complete: Rescheduled ${totalRescheduled} of ${invalidPosts.length} posts to valid time slots`
+      );
+      logger.info(
+        `Invalid time slot validation complete: Rescheduled ${totalRescheduled} posts`
+      );
+
+      return { rescheduled: totalRescheduled, checked: invalidPosts.length };
+    } catch (err) {
+      Sentry.captureException(err, {
+        extra: {
+          context: 'Failed to reschedule posts at invalid time slots',
+          orgId,
+          integrationId,
+        },
+      });
+      logger.error(
+        `Error during invalid time slot validation: ${err instanceof Error ? err.message : String(err)}`
+      );
+      console.error('[INVALID TIME SLOTS] ❌ Error during validation:', err);
+      return { rescheduled: 0, checked: 0 };
+    }
+  }
+
   async checkIntegrationConnection(orgId: string, integrationId: string) {
     const { logger } = Sentry;
     

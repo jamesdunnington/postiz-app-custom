@@ -8,6 +8,7 @@ import { CheckMissingQueues } from '@gitroom/cron/tasks/check.missing.queues';
 import { PostNowPendingQueues } from '@gitroom/cron/tasks/post.now.pending.queues';
 import { RescheduleMissedPostsStartup } from '@gitroom/cron/tasks/reschedule.missed.posts.startup';
 import { CheckDuplicateSchedules } from '@gitroom/cron/tasks/check.duplicate.schedules';
+import { CheckInvalidTimeSlots } from '@gitroom/cron/tasks/check.invalid.timeslots';
 
 @Module({
   imports: [
@@ -17,6 +18,6 @@ import { CheckDuplicateSchedules } from '@gitroom/cron/tasks/check.duplicate.sch
     BullMqModule,
   ],
   controllers: [],
-  providers: [FILTER, CheckMissingQueues, PostNowPendingQueues, RescheduleMissedPostsStartup, CheckDuplicateSchedules],
+  providers: [FILTER, CheckMissingQueues, PostNowPendingQueues, RescheduleMissedPostsStartup, CheckDuplicateSchedules, CheckInvalidTimeSlots],
 })
 export class CronModule {}

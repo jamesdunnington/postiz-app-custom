@@ -54,7 +54,7 @@ export const TimeTable: FC<{
   }, []);
   useKeypress('Escape', askClose);
   const removeSlot = useCallback(
-    (index: number) => async () => {
+    (timeValue: number) => async () => {
       if (
         !(await deleteDialog(
           t(
@@ -65,7 +65,7 @@ export const TimeTable: FC<{
       ) {
         return;
       }
-      setCurrentTimes((prev) => prev.filter((_, i) => i !== index));
+      setCurrentTimes((prev) => prev.filter((slot) => slot.time !== timeValue));
     },
     []
   );
@@ -159,12 +159,12 @@ export const TimeTable: FC<{
         </div>
       </div>
       <div className="mt-[16px] grid grid-cols-2 place-items-center w-[100px] mx-auto">
-        {times.map((timeSlot, index) => (
+        {times.map((timeSlot) => (
           <Fragment key={timeSlot.formatted}>
             <div className="text-start w-full">{timeSlot.formatted}</div>
             <div
               className="cursor-pointer text-red-400 text-start w-full"
-              onClick={removeSlot(index)}
+              onClick={removeSlot(timeSlot.value)}
             >
               X
             </div>

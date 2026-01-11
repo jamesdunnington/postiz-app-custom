@@ -185,6 +185,38 @@ export const Menu: FC<{
     }
   }, [id, onChange]);
 
+  const validateTimeSlots = useCallback(async () => {
+    setShow(false);
+    
+    try {
+      toast.show('Validating scheduled posts...', 'info');
+      
+      const response = await fetch(`/integrations/${id}/validate-timeslots`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        toast.show('Failed to validate time slots', 'warning');
+        return;
+      }
+
+      const result = await response.json();
+
+      if (result.rescheduled > 0) {
+        toast.show(
+          `Rescheduled ${result.rescheduled} of ${result.checked} posts to valid time slots`,
+          'success'
+        );
+        // Refresh calendar to show updated posts
+        reloadCalendarView();
+      } else {
+        toast.show('All posts are already at valid time slots', 'success');
+      }
+    } catch (error) {
+      toast.show('Failed to validate time slots', 'warning');
+    }
+  }, [id, reloadCalendarView]);
+
   const createPost = useCallback(
     (integration: Integrations) => async () => {
       setShow(false);
@@ -558,6 +590,28 @@ export const Menu: FC<{
             </div>
             <div className="text-[14px]">
               {t('edit_time_slots', 'Edit Time Slots')}
+            </div>
+          </div>
+          <div
+            className="flex gap-[12px] items-center py-[8px] px-[10px]"
+            onClick={validateTimeSlots}
+          >
+            <div>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="18"
+                height="18"
+                viewBox="0 0 32 32"
+                fill="none"
+              >
+                <path
+                  d="M16 2C8.28 2 2 8.28 2 16C2 23.72 8.28 30 16 30C23.72 30 30 23.72 30 16C30 8.28 23.72 2 16 2ZM16 28C9.38 28 4 22.62 4 16C4 9.38 9.38 4 16 4C22.62 4 28 9.38 28 16C28 22.62 22.62 28 16 28ZM22.3 10.3L14 18.6L9.7 14.3C9.3 13.9 8.7 13.9 8.3 14.3C7.9 14.7 7.9 15.3 8.3 15.7L13.3 20.7C13.5 20.9 13.7 21 14 21C14.3 21 14.5 20.9 14.7 20.7L23.7 11.7C24.1 11.3 24.1 10.7 23.7 10.3C23.3 9.9 22.7 9.9 22.3 10.3Z"
+                  fill="currentColor"
+                />
+              </svg>
+            </div>
+            <div className="text-[14px]">
+              {t('validate_time_slots', 'Validate Time Slots')}
             </div>
           </div>
           {canEnable && (

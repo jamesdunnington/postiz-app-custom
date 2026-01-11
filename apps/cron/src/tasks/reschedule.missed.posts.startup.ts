@@ -109,6 +109,38 @@ export class RescheduleMissedPostsStartup implements OnModuleInit {
             `Server startup check complete: No missed posts found across ${activeIntegrations.length} integrations`
           );
         }
+
+        // STEP 3: Check for posts at invalid time slots
+        console.log('[STARTUP CHECK] Step 3: Checking for posts at invalid time slots...');
+        logger.info('Checking for posts at invalid time slots');
+        
+        try {
+          const invalidResult = await this._integrationService.rescheduleInvalidTimeSlots();
+          
+          if (invalidResult.rescheduled > 0) {
+            console.log(
+              `[STARTUP CHECK] ✅ Rescheduled ${invalidResult.rescheduled} of ${invalidResult.checked} posts from invalid time slots`
+            );
+            logger.info(
+              `Rescheduled ${invalidResult.rescheduled} posts from invalid time slots`
+            );
+          } else {
+            console.log('[STARTUP CHECK] ✅ All posts are at valid time slots');
+            logger.info('All posts are at valid time slots');
+          }
+        } catch (err) {
+          console.error(
+            `[STARTUP CHECK] ❌ Error checking invalid time slots: ${err instanceof Error ? err.message : String(err)}`
+          );
+          Sentry.captureException(err, {
+            extra: {
+              context: 'Failed to check invalid time slots on startup',
+            },
+          });
+          logger.error(
+            `Error checking invalid time slots: ${err instanceof Error ? err.message : String(err)}`
+          );
+        }
       } catch (err) {
         Sentry.captureException(err, {
           extra: {
