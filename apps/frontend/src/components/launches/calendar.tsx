@@ -898,8 +898,11 @@ const CalendarItem: FC<{
         onClick={editPost}
         className={clsx(
           'gap-[5px] w-full flex h-full flex-1 rounded-br-[10px] rounded-bl-[10px] p-[8px] text-[14px] bg-newColColor',
-          'relative',
-          isBeforeNow && '!grayscale'
+          'relative border-2',
+          isBeforeNow && '!grayscale',
+          state === 'ERROR' && 'border-red-500',
+          state === 'DRAFT' && 'border-orange-500',
+          state !== 'ERROR' && state !== 'DRAFT' && 'border-transparent'
         )}
       >
         <div className={clsx('relative min-w-[20px]')}>
