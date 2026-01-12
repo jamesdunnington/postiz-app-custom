@@ -117,12 +117,23 @@ export class UsersController {
     }
   }
 
-  @Post('/personal')
+@Post('/personal')
   async changePersonal(
     @GetUserFromRequest() user: User,
     @Body() body: UserDetailDto
   ) {
     return this._userService.changePersonal(user.id, body);
+  }
+
+  @Post('/timezone')
+  async updateTimezone(
+    @GetUserFromRequest() user: User,
+    @Body('timezone') timezone: number
+  ) {
+    if (typeof timezone !== 'number') {
+      throw new HttpException('Invalid timezone value', 400);
+    }
+    return this._userService.updateTimezone(user.id, timezone);
   }
 
   @Get('/subscription')

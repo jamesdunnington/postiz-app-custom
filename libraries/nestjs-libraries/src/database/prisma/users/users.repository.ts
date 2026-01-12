@@ -119,6 +119,17 @@ export class UsersRepository {
     });
   }
 
+  updateTimezone(userId: string, timezone: number) {
+    return this._user.model.user.update({
+      where: {
+        id: userId,
+      },
+      data: {
+        timezone,
+      },
+    });
+  }
+
   async getPersonal(userId: string) {
     const user = await this._user.model.user.findUnique({
       where: {

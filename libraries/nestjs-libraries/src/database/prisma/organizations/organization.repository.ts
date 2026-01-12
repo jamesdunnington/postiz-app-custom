@@ -233,7 +233,7 @@ export class OrganizationRepository {
                   : '',
                 providerName: body.provider,
                 providerId: body.providerId || '',
-                timezone: 0,
+                timezone: body.timezone || 0,
                 ip,
                 agent: userAgent,
               },

@@ -55,4 +55,8 @@ export class UsersService {
   changePersonal(userId: string, body: UserDetailDto) {
     return this._usersRepository.changePersonal(userId, body);
   }
+
+  updateTimezone(userId: string, timezone: number) {
+    return this._usersRepository.updateTimezone(userId, timezone);
+  }
 }

@@ -110,10 +110,15 @@ export function RegisterAfter({
   const fetchData = useFetch();
   const onSubmit: SubmitHandler<Inputs> = async (data) => {
     setLoading(true);
+    
+    // Auto-detect user's timezone offset in minutes
+    const timezoneOffset = new Date().getTimezoneOffset() * -1; // Negate because getTimezoneOffset returns opposite sign
+    
     await fetchData('/auth/register', {
       method: 'POST',
       body: JSON.stringify({
         ...data,
+        timezone: timezoneOffset,
       }),
     })
       .then(async (response) => {

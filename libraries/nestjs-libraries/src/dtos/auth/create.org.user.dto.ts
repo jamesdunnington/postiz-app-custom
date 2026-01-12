@@ -1,6 +1,8 @@
 import {
   IsDefined,
   IsEmail,
+  IsNumber,
+  IsOptional,
   IsString,
   MaxLength,
   MinLength,
@@ -35,4 +37,8 @@ export class CreateOrgUserDto {
   @MinLength(3)
   @MaxLength(128)
   company: string;
+
+  @IsNumber()
+  @IsOptional()
+  timezone?: number;
 }
