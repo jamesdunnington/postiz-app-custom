@@ -1499,6 +1499,15 @@ export class PostsRepository {
       },
     });
 
+    console.log(`[findPostsAtInvalidTimeSlots] Query returned ${posts.length} posts`);
+    if (posts.length > 0) {
+      const samplePost = posts[0];
+      const sampleTimezone = samplePost.integration?.organization?.users?.[0]?.user?.timezone;
+      console.log(`[findPostsAtInvalidTimeSlots] Sample post timezone path: ${sampleTimezone}`);
+      console.log(`[findPostsAtInvalidTimeSlots] Sample post integration: ${samplePost.integration?.name}`);
+      console.log(`[findPostsAtInvalidTimeSlots] Sample post postingTimes count: ${(samplePost.integration?.postingTimes as any[])?.length || 0}`);
+    }
+
     const invalidPosts = [];
 
     for (const post of posts) {
