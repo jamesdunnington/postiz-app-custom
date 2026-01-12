@@ -5,7 +5,6 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import { PostsRepository } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.repository';
-import { IntegrationRepository } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.repository';
 import { CreatePostDto } from '@gitroom/nestjs-libraries/dtos/posts/create.post.dto';
 import dayjs from 'dayjs';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
@@ -51,7 +50,6 @@ export class PostsService {
   private storage = UploadFactory.createStorage();
   constructor(
     private _postRepository: PostsRepository,
-    private _integrationRepository: IntegrationRepository,
     private _workerServiceProducer: BullMqClient,
     private _integrationManager: IntegrationManager,
     private _notificationService: NotificationService,
@@ -1048,11 +1046,8 @@ export class PostsService {
   ) {
     const { logger } = Sentry;
     try {
-      // Get integration with organization to fetch user timezone
-      const integrationWithOrg = await this._integrationRepository.getIntegrationByIdOnly(
-        integrationId
-      );
-      const userTimezone = integrationWithOrg?.organization?.users?.[0]?.user?.timezone || 0;
+      // Get user timezone from integration's organization
+      const userTimezone = await this._integrationService.getUserTimezone(integrationId);
       
       // Get all missed posts for this integration
       const missedPosts = await this._postRepository.getMissedPostsForIntegration(

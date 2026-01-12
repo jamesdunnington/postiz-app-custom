@@ -188,6 +188,11 @@ export class IntegrationService {
     return this._integrationRepository.getIntegrationByIdOnly(id);
   }
 
+  async getUserTimezone(integrationId: string): Promise<number> {
+    const integration = await this._integrationRepository.getIntegrationByIdOnly(integrationId);
+    return integration?.organization?.users?.[0]?.user?.timezone || 0;
+  }
+
   async refreshToken(provider: SocialProvider, refresh: string) {
     try {
       const { refreshToken, accessToken, expiresIn } =
