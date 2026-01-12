@@ -899,7 +899,7 @@ const CalendarItem: FC<{
         className={clsx(
           'gap-[5px] w-full flex h-full flex-1 rounded-br-[10px] rounded-bl-[10px] p-[8px] text-[14px] bg-newColColor',
           'relative border-2',
-          isBeforeNow && '!grayscale',
+          isBeforeNow && state === 'PUBLISHED' && 'grayscale',
           state === 'ERROR' && 'border-red-500',
           state === 'DRAFT' && 'border-orange-500',
           state !== 'ERROR' && state !== 'DRAFT' && 'border-transparent'
