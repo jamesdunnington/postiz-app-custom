@@ -1046,6 +1046,12 @@ export class PostsService {
   ) {
     const { logger } = Sentry;
     try {
+      // Get integration with organization to fetch user timezone
+      const integrationWithOrg = await this._integrationRepository.getIntegrationById(
+        integrationId
+      );
+      const userTimezone = integrationWithOrg?.organization?.users?.[0]?.user?.timezone || 0;
+      
       // Get all missed posts for this integration
       const missedPosts = await this._postRepository.getMissedPostsForIntegration(
         integrationId
@@ -1073,7 +1079,9 @@ export class PostsService {
         missedPosts[0].organizationId,
         integrationId,
         missedPosts.length,
-        postingTimes
+        postingTimes,
+        false,
+        userTimezone // Pass user's timezone for proper UTC conversion
       );
 
       if (availableSlots.length === 0) {

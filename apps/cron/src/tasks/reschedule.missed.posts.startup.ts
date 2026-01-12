@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
+import { IntegrationRepository } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.repository';
 import { PostsRepository } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.repository';
 import * as Sentry from '@sentry/nestjs';
 
@@ -7,6 +8,7 @@ import * as Sentry from '@sentry/nestjs';
 export class RescheduleMissedPostsStartup implements OnModuleInit {
   constructor(
     private _integrationService: IntegrationService,
+    private _integrationRepository: IntegrationRepository,
     private _postsRepository: PostsRepository
   ) {}
 
@@ -193,6 +195,12 @@ export class RescheduleMissedPostsStartup implements OnModuleInit {
 
           // Get posting times for this integration
           const postingTimes = JSON.parse(integration.postingTimes || '[]');
+          
+          // Get user timezone from integration
+          const integrationWithOrg = await this._integrationRepository.getIntegrationById(
+            integrationId
+          );
+          const userTimezone = integrationWithOrg?.organization?.users?.[0]?.user?.timezone || 0;
 
           if (postingTimes.length === 0) {
             logger.warn(
@@ -221,7 +229,9 @@ export class RescheduleMissedPostsStartup implements OnModuleInit {
                 post.organizationId,
                 integrationId,
                 1,
-                postingTimes
+                postingTimes,
+                false,
+                userTimezone // Pass user's timezone for proper UTC conversion
               );
 
             if (availableSlot.length === 0) {

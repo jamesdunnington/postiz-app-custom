@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PostsRepository } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.repository';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
+import { IntegrationRepository } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.repository';
 import { BullMqClient } from '@gitroom/nestjs-libraries/bull-mq-transport-new/client';
 import * as Sentry from '@sentry/nestjs';
 import dayjs from 'dayjs';
@@ -14,6 +15,7 @@ export class CheckDuplicateSchedules {
   constructor(
     private _postsRepository: PostsRepository,
     private _integrationService: IntegrationService,
+    private _integrationRepository: IntegrationRepository,
     private _bullMqClient: BullMqClient
   ) {}
 
@@ -61,6 +63,12 @@ export class CheckDuplicateSchedules {
 
           // Get posting times for this integration
           const postingTimes = JSON.parse(integration.postingTimes || '[]');
+          
+          // Get user timezone from integration
+          const integrationWithOrg = await this._integrationRepository.getIntegrationById(
+            integrationId
+          );
+          const userTimezone = integrationWithOrg?.organization?.users?.[0]?.user?.timezone || 0;
 
           if (postingTimes.length === 0) {
             logger.warn(
@@ -89,7 +97,9 @@ export class CheckDuplicateSchedules {
                 post.organizationId,
                 integrationId,
                 1,
-                postingTimes
+                postingTimes,
+                false,
+                userTimezone // Pass user's timezone for proper UTC conversion
               );
 
             if (availableSlot.length === 0) {

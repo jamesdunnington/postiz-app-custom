@@ -367,6 +367,20 @@ export class PostsRepository {
         integration: {
           select: {
             postingTimes: true,
+            organization: {
+              include: {
+                users: {
+                  take: 1,
+                  select: {
+                    user: {
+                      select: {
+                        timezone: true
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
         },
       },
@@ -397,13 +411,17 @@ export class PostsRepository {
           ? postingTimesRaw.map((t: any) => typeof t === 'number' ? { time: t } : t)
           : [];
 
+        // Get user timezone from integration
+        const userTimezone = post.integration?.organization?.users?.[0]?.user?.timezone || 0;
+
         if (postingTimes.length > 0) {
           const availableSlots = await this.getNextAvailableSlots(
             orgId,
             post.integrationId,
             1,
             postingTimes,
-            true // searchFromEnd
+            true, // searchFromEnd
+            userTimezone // Pass user's timezone for proper UTC conversion
           );
 
           if (availableSlots.length > 0) {
@@ -480,7 +498,23 @@ export class PostsRepository {
           // Get posting times for this integration
           const integration = await this._integrations.model.integration.findUnique({
             where: { id: body.integration.id },
-            select: { postingTimes: true },
+            select: { 
+              postingTimes: true,
+              organization: {
+                include: {
+                  users: {
+                    take: 1,
+                    select: {
+                      user: {
+                        select: {
+                          timezone: true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
           });
           
           const postingTimesRaw = (integration?.postingTimes as any) || [];
@@ -488,13 +522,16 @@ export class PostsRepository {
             ? postingTimesRaw.map((t: any) => typeof t === 'number' ? { time: t } : t)
             : [];
           
+          const userTimezone = integration?.organization?.users?.[0]?.user?.timezone || 0;
+          
           if (postingTimes.length > 0) {
             const availableSlots = await this.getNextAvailableSlots(
               orgId,
               body.integration.id,
               1,
               postingTimes,
-              true // searchFromEnd
+              true, // searchFromEnd
+              userTimezone // Pass user's timezone for proper UTC conversion
             );
             
             if (availableSlots.length > 0) {
@@ -897,7 +934,8 @@ export class PostsRepository {
     integrationId: string,
     count: number,
     postingTimes: { time: number }[],
-    searchFromEnd: boolean = false
+    searchFromEnd: boolean = false,
+    userTimezone: number = 0
   ) {
     console.log(`[getNextAvailableSlots] Looking for ${count} slot(s) for integration ${integrationId}, searchFromEnd: ${searchFromEnd}`);
     console.log(`[getNextAvailableSlots] Has ${postingTimes.length} posting times configured`);
@@ -934,9 +972,15 @@ export class PostsRepository {
       for (const { time } of postingTimes) {
         if (slots.length >= count) break;
 
+        // Convert local time to UTC
+        // time is in minutes from midnight in user's local timezone
+        // We need to create a local time, then convert to UTC
         const hours = Math.floor(time / 60);
         const minutes = time % 60;
-        const slotTime = currentDay.hour(hours).minute(minutes).second(0).millisecond(0);
+        
+        // Create time in user's local timezone, then convert to UTC
+        const localTime = currentDay.hour(hours).minute(minutes).second(0).millisecond(0);
+        const slotTime = localTime.subtract(userTimezone, 'minute'); // Convert local -> UTC
         const slotTimestamp = slotTime.valueOf();
 
         // Only consider future slots
@@ -985,9 +1029,14 @@ export class PostsRepository {
         for (const { time } of postingTimes) {
           if (slots.length >= count) break;
 
+          // Convert local time to UTC
+          // time is in minutes from midnight in user's local timezone
           const hours = Math.floor(time / 60);
           const minutes = time % 60;
-          const slotTime = currentDay.hour(hours).minute(minutes).second(0).millisecond(0);
+          
+          // Create time in user's local timezone, then convert to UTC
+          const localTime = currentDay.hour(hours).minute(minutes).second(0).millisecond(0);
+          const slotTime = localTime.subtract(userTimezone, 'minute'); // Convert local -> UTC
           const slotTimestamp = slotTime.valueOf();
 
           // Only consider future slots

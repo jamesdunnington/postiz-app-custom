@@ -748,6 +748,12 @@ export class IntegrationService {
   ) {
     const { logger } = Sentry;
     try {
+      // Get user timezone from integration's organization
+      const integrationWithOrg = await this._integrationRepository.getIntegrationById(
+        integrationId
+      );
+      const userTimezone = integrationWithOrg?.organization?.users?.[0]?.user?.timezone || 0;
+      
       // Get all missed posts for this integration
       const missedPosts = await this._postsRepository.getMissedPostsForIntegration(
         integrationId
@@ -782,7 +788,8 @@ export class IntegrationService {
           integrationId,
           1, // Get one slot at a time
           postingTimes,
-          true // searchFromEnd: move to end of schedule
+          true, // searchFromEnd: move to end of schedule
+          userTimezone // Pass user's timezone for proper UTC conversion
         );
 
         if (availableSlot.length === 0) {
@@ -860,6 +867,12 @@ export class IntegrationService {
     let rescheduledCount = 0;
 
     try {
+      // Get user timezone from integration's organization
+      const integrationWithOrg = await this._integrationRepository.getIntegrationById(
+        integrationId
+      );
+      const userTimezone = integrationWithOrg?.organization?.users?.[0]?.user?.timezone || 0;
+      
       // Get all posts with duplicate schedules (actual posts, not summaries)
       const allDuplicates = await this._postsRepository.findDuplicateSchedules();
       const integrationDuplicates = allDuplicates.filter(p => p.integrationId === integrationId);
@@ -909,7 +922,8 @@ export class IntegrationService {
               integrationId,
               1,
               postingTimes,
-              true // Search from end: move duplicates to the end of schedule
+              true, // Search from end: move duplicates to the end of schedule
+              userTimezone // Pass user's timezone for proper UTC conversion
             );
 
             if (nextSlot.length > 0) {
@@ -1052,7 +1066,8 @@ export class IntegrationService {
               post.integrationId,
               1,
               postingTimes,
-              true // searchFromEnd - move to end of schedule
+              true, // searchFromEnd - move to end of schedule
+              post.userTimezone || 0 // Pass user's timezone for proper UTC conversion
             );
 
             if (availableSlot.length === 0) {
