@@ -1503,9 +1503,10 @@ export class PostsRepository {
     if (posts.length > 0) {
       const samplePost = posts[0];
       const sampleTimezone = samplePost.integration?.organization?.users?.[0]?.user?.timezone;
+      const postingTimesArr = samplePost.integration?.postingTimes as unknown as any[];
       console.log(`[findPostsAtInvalidTimeSlots] Sample post timezone path: ${sampleTimezone}`);
       console.log(`[findPostsAtInvalidTimeSlots] Sample post integration: ${samplePost.integration?.name}`);
-      console.log(`[findPostsAtInvalidTimeSlots] Sample post postingTimes count: ${(samplePost.integration?.postingTimes as any[])?.length || 0}`);
+      console.log(`[findPostsAtInvalidTimeSlots] Sample post postingTimes count: ${postingTimesArr?.length || 0}`);
     }
 
     const invalidPosts = [];
