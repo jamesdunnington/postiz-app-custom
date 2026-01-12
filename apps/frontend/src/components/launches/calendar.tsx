@@ -362,18 +362,23 @@ export const CalendarColumn: FC<{
   const modal = useModals();
   const fetch = useFetch();
   const postList = useMemo(() => {
-    return posts.filter((post) => {
-      const pList = dayjs.utc(post.publishDate).local();
-      const check =
-        display === 'day'
-          ? pList.isSameOrAfter(getDate.startOf('hour')) &&
-            pList.isBefore(getDate.endOf('hour'))
-          : display === 'week'
-          ? pList.isSameOrAfter(getDate.startOf('hour')) &&
-            pList.isBefore(getDate.endOf('hour'))
-          : pList.format('DD/MM/YYYY') === getDate.format('DD/MM/YYYY');
-      return check;
-    });
+    return posts
+      .filter((post) => {
+        const pList = dayjs.utc(post.publishDate).local();
+        const check =
+          display === 'day'
+            ? pList.isSameOrAfter(getDate.startOf('hour')) &&
+              pList.isBefore(getDate.endOf('hour'))
+            : display === 'week'
+            ? pList.isSameOrAfter(getDate.startOf('hour')) &&
+              pList.isBefore(getDate.endOf('hour'))
+            : pList.format('DD/MM/YYYY') === getDate.format('DD/MM/YYYY');
+        return check;
+      })
+      .sort((a, b) => {
+        // Sort by publishDate chronologically (earliest first)
+        return dayjs.utc(a.publishDate).diff(dayjs.utc(b.publishDate));
+      });
   }, [posts, display, getDate]);
   const [showAll, setShowAll] = useState(false);
   const showAllFunc = useCallback(() => {
@@ -899,11 +904,17 @@ const CalendarItem: FC<{
       >
         <div className={clsx('relative min-w-[20px]')}>
           <img
-            className="w-[20px] h-[20px] rounded-[8px]"
+            className={clsx(
+              'w-[20px] h-[20px] rounded-[8px]',
+              state === 'PUBLISHED' && 'grayscale opacity-50'
+            )}
             src={post.integration.picture! || '/no-picture.jpg'}
           />
           <img
-            className="w-[12px] h-[12px] rounded-[8px] absolute z-10 top-[10px] end-0 border border-fifth"
+            className={clsx(
+              'w-[12px] h-[12px] rounded-[8px] absolute z-10 top-[10px] end-0 border border-fifth',
+              state === 'PUBLISHED' && 'grayscale opacity-50'
+            )}
             src={`/icons/platforms/${post.integration?.providerIdentifier}.png`}
           />
         </div>
