@@ -5,6 +5,7 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import { PostsRepository } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.repository';
+import { IntegrationRepository } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.repository';
 import { CreatePostDto } from '@gitroom/nestjs-libraries/dtos/posts/create.post.dto';
 import dayjs from 'dayjs';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
@@ -50,6 +51,7 @@ export class PostsService {
   private storage = UploadFactory.createStorage();
   constructor(
     private _postRepository: PostsRepository,
+    private _integrationRepository: IntegrationRepository,
     private _workerServiceProducer: BullMqClient,
     private _integrationManager: IntegrationManager,
     private _notificationService: NotificationService,
