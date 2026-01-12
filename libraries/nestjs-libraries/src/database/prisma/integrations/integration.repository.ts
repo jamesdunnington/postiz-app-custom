@@ -349,6 +349,21 @@ export class IntegrationRepository {
         id,
         deletedAt: null,
       },
+      include: {
+        organization: {
+          include: {
+            users: {
+              include: {
+                user: {
+                  select: {
+                    timezone: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     });
   }
 
