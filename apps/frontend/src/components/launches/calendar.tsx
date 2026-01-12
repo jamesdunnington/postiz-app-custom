@@ -366,8 +366,8 @@ export const CalendarColumn: FC<{
       const pList = dayjs.utc(post.publishDate).local();
       const check =
         display === 'day'
-          ? pList.format('YYYY-MM-DD HH:mm') ===
-            getDate.format('YYYY-MM-DD HH:mm')
+          ? pList.isSameOrAfter(getDate.startOf('hour')) &&
+            pList.isBefore(getDate.endOf('hour'))
           : display === 'week'
           ? pList.isSameOrAfter(getDate.startOf('hour')) &&
             pList.isBefore(getDate.endOf('hour'))
