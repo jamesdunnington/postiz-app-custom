@@ -197,7 +197,7 @@ export class RescheduleMissedPostsStartup implements OnModuleInit {
           const postingTimes = JSON.parse(integration.postingTimes || '[]');
           
           // Get user timezone from integration
-          const integrationWithOrg = await this._integrationRepository.getIntegrationById(
+          const integrationWithOrg = await this._integrationRepository.getIntegrationByIdOnly(
             integrationId
           );
           const userTimezone = integrationWithOrg?.organization?.users?.[0]?.user?.timezone || 0;

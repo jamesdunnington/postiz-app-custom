@@ -749,7 +749,7 @@ export class IntegrationService {
     const { logger } = Sentry;
     try {
       // Get user timezone from integration's organization
-      const integrationWithOrg = await this._integrationRepository.getIntegrationById(
+      const integrationWithOrg = await this._integrationRepository.getIntegrationByIdOnly(
         integrationId
       );
       const userTimezone = integrationWithOrg?.organization?.users?.[0]?.user?.timezone || 0;
@@ -868,7 +868,7 @@ export class IntegrationService {
 
     try {
       // Get user timezone from integration's organization
-      const integrationWithOrg = await this._integrationRepository.getIntegrationById(
+      const integrationWithOrg = await this._integrationRepository.getIntegrationByIdOnly(
         integrationId
       );
       const userTimezone = integrationWithOrg?.organization?.users?.[0]?.user?.timezone || 0;

@@ -1047,7 +1047,7 @@ export class PostsService {
     const { logger } = Sentry;
     try {
       // Get integration with organization to fetch user timezone
-      const integrationWithOrg = await this._integrationRepository.getIntegrationById(
+      const integrationWithOrg = await this._integrationRepository.getIntegrationByIdOnly(
         integrationId
       );
       const userTimezone = integrationWithOrg?.organization?.users?.[0]?.user?.timezone || 0;
