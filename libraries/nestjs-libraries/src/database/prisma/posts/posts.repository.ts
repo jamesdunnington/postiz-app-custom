@@ -1533,43 +1533,17 @@ export class PostsRepository {
         const postTimeInUserTZ = postTimeUTC.add(userTimezone, 'minute');
         const postTimeInMinutes = postTimeInUserTZ.hour() * 60 + postTimeInUserTZ.minute();
 
-        console.log(
-          `[findPostsAtInvalidTimeSlots] Post ${post.id}: ` +
-          `UTC: ${postTimeUTC.format('HH:mm')}, ` +
-          `UserTZ offset: ${userTimezone}min, ` +
-          `Local: ${postTimeInUserTZ.format('HH:mm')} (${postTimeInMinutes}min), ` +
-          `Slots: ${postingTimes.map((t: { time: number }) => t.time).join(',')}`
-        );
-
-        // Targeted debug for the wakeupwakecounty integration or the specific integration id
-        const TARGET_INTEGRATION_ID = 'cmgzxah21000mp9712kro6byu';
-        const TARGET_INTEGRATION_NAME = 'wakeupwakecounty';
-        if (
-          post.integration?.id === TARGET_INTEGRATION_ID ||
-          post.integration?.name === TARGET_INTEGRATION_NAME
-        ) {
-          try {
-            console.log(`[findPostsAtInvalidTimeSlots][target] DEBUG post ${post.id} for integration ${post.integration?.name || post.integration?.id}`);
-            console.log(`[findPostsAtInvalidTimeSlots][target] postingTimesRaw type: ${Array.isArray(postingTimesRaw) ? 'array' : typeof postingTimesRaw}`);
-            console.log(`[findPostsAtInvalidTimeSlots][target] postingTimesRaw sample: ${JSON.stringify(postingTimesRaw).slice(0, 1000)}`);
-            console.log(`[findPostsAtInvalidTimeSlots][target] postingTimesParsed: ${JSON.stringify(postingTimes).slice(0, 1000)}`);
-            console.log(
-              `[findPostsAtInvalidTimeSlots][target] postTimeUTC: ${postTimeUTC.toISOString()}, postTimeInUserTZ: ${postTimeInUserTZ.toISOString()}, postTimeInMinutes: ${postTimeInMinutes}`
-            );
-
-            // Print detailed diffs for each configured slot to see why it doesn't match
-            for (const slot of postingTimes) {
-              const slotTime = slot.time as number;
-              const wrapAroundDiff = Math.min(
-                Math.abs(slotTime - postTimeInMinutes),
-                Math.abs(slotTime - postTimeInMinutes + 1440),
-                Math.abs(slotTime - postTimeInMinutes - 1440)
-              );
-              console.log(`[findPostsAtInvalidTimeSlots][target] slot ${slotTime} diff ${wrapAroundDiff}`);
-            }
-          } catch (e) {
-            console.error('[findPostsAtInvalidTimeSlots][target] Error printing target debug', e);
-          }
+        // Only log for wakeupwakecounty or posts at 15:13 UTC (23:13 local)
+        const isDebugPost = post.integration?.name === 'wakeupwakecounty' || postTimeUTC.hour() === 15 && postTimeUTC.minute() === 13;
+        if (isDebugPost) {
+          console.log(
+            `[DEBUG] Post ${post.id} (${post.integration?.name}): ` +
+            `UTC: ${postTimeUTC.format('HH:mm')}, ` +
+            `TZ: ${userTimezone}min, ` +
+            `Local: ${postTimeInUserTZ.format('HH:mm')} (${postTimeInMinutes}min), ` +
+            `NumSlots: ${postingTimes.length}, ` +
+            `Has1393: ${postingTimes.some((t: { time: number }) => t.time === 1393)}`
+          );
         }
 
         // Check if this time matches any configured time slot (within 1 minute tolerance)
@@ -1585,6 +1559,7 @@ export class PostsRepository {
         });
 
         if (!isValidTimeSlot) {
+          console.log(`[INVALID] Post ${post.id} (${post.integration?.name}) at ${postTimeInMinutes}min is INVALID - not in ${postingTimes.length} configured slots`);
           invalidPosts.push({
             ...post,
             postTimeInMinutes,
