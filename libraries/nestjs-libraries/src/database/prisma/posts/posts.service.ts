@@ -297,6 +297,12 @@ export class PostsService {
       return;
     }
 
+    // Skip posts that are already published to prevent duplicate posting
+    if (firstPost.state === 'PUBLISHED') {
+      console.log(`[PostsService] Skipping post ${id} - already published`);
+      return;
+    }
+
     if (firstPost.integration?.refreshNeeded) {
       await this._notificationService.inAppNotification(
         firstPost.organizationId,
