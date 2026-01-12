@@ -1500,20 +1500,59 @@ export class PostsRepository {
     });
 
     console.log(`[findPostsAtInvalidTimeSlots] Query returned ${posts.length} posts`);
+    
+    // Count posts by integration for debugging
+    const integrationCounts: Record<string, number> = {};
+    for (const p of posts) {
+      const name = p.integration?.name || 'unknown';
+      integrationCounts[name] = (integrationCounts[name] || 0) + 1;
+    }
+    console.log(`[findPostsAtInvalidTimeSlots] Posts by integration: ${JSON.stringify(integrationCounts)}`);
+    
+    // Helper to parse postingTimes (can be string or array)
+    const parsePostingTimes = (pt: any): any[] => {
+      if (typeof pt === 'string') {
+        try { return JSON.parse(pt); } catch { return []; }
+      }
+      return Array.isArray(pt) ? pt : [];
+    };
+    
+    // Find wakeupwakecounty posts specifically
+    const wakeupPosts = posts.filter(p => p.integration?.name === 'wakeupwakecounty');
+    console.log(`[findPostsAtInvalidTimeSlots] Found ${wakeupPosts.length} wakeupwakecounty posts`);
+    if (wakeupPosts.length > 0) {
+      const wp = wakeupPosts[0];
+      const wpTimes = parsePostingTimes(wp.integration?.postingTimes);
+      console.log(`[findPostsAtInvalidTimeSlots] wakeupwakecounty first post: ${wp.id}, publishDate: ${wp.publishDate}, slots: ${wpTimes.length}`);
+    }
+    
     if (posts.length > 0) {
       const samplePost = posts[0];
       const sampleTimezone = samplePost.integration?.organization?.users?.[0]?.user?.timezone;
-      const postingTimesArr = samplePost.integration?.postingTimes as unknown as any[];
+      const postingTimesArr = parsePostingTimes(samplePost.integration?.postingTimes);
       console.log(`[findPostsAtInvalidTimeSlots] Sample post timezone path: ${sampleTimezone}`);
       console.log(`[findPostsAtInvalidTimeSlots] Sample post integration: ${samplePost.integration?.name}`);
-      console.log(`[findPostsAtInvalidTimeSlots] Sample post postingTimes count: ${postingTimesArr?.length || 0}`);
+      console.log(`[findPostsAtInvalidTimeSlots] Sample post postingTimes count: ${postingTimesArr.length}`);
+      console.log(`[findPostsAtInvalidTimeSlots] postingTimes type: ${typeof samplePost.integration?.postingTimes}`);
     }
 
     const invalidPosts = [];
 
     for (const post of posts) {
       try {
-        const postingTimesRaw = (post.integration?.postingTimes as any) || [];
+        // postingTimes can be a string (from TEXT column) or already parsed array
+        let postingTimesRaw = post.integration?.postingTimes as any;
+        
+        // Parse JSON string if needed
+        if (typeof postingTimesRaw === 'string') {
+          try {
+            postingTimesRaw = JSON.parse(postingTimesRaw);
+          } catch {
+            postingTimesRaw = [];
+          }
+        }
+        
+        postingTimesRaw = postingTimesRaw || [];
         const postingTimes = Array.isArray(postingTimesRaw) 
           ? postingTimesRaw.map((t: any) => typeof t === 'number' ? { time: t } : t)
           : [];
