@@ -10,6 +10,12 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      no_cache:
+        description: 'Build without cache'
+        required: false
+        default: 'true'
+        type: boolean
 
 env:
   REGISTRY: ghcr.io
@@ -57,9 +63,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
+          cache-from: ${{ github.event.inputs.no_cache == 'true' && '' || 'type=gha' }}
           cache-to: type=gha,mode=max
           platforms: linux/amd64
+          no-cache: ${{ github.event.inputs.no_cache == 'true' }}
 
       - name: Generate deployment summary
         run: |
