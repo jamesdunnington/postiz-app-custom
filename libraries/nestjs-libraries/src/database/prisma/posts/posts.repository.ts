@@ -974,13 +974,14 @@ export class PostsRepository {
 
         // Convert local time to UTC
         // time is in minutes from midnight in user's local timezone
-        // We need to create a local time, then convert to UTC
         const hours = Math.floor(time / 60);
         const minutes = time % 60;
         
-        // Create time in user's local timezone, then convert to UTC
-        const localTime = currentDay.hour(hours).minute(minutes).second(0).millisecond(0);
-        const slotTime = localTime.subtract(userTimezone, 'minute'); // Convert local -> UTC
+        // Create a UTC day at midnight, then add the LOCAL time
+        // Finally subtract timezone to get actual UTC time
+        const dayAtMidnight = currentDay.startOf('day'); // Ensure we're at midnight UTC
+        const utcTimeWithLocalHours = dayAtMidnight.hour(hours).minute(minutes).second(0).millisecond(0);
+        const slotTime = utcTimeWithLocalHours.subtract(userTimezone, 'minute'); // Adjust to actual UTC
         const slotTimestamp = slotTime.valueOf();
 
         // Only consider future slots
@@ -1034,9 +1035,11 @@ export class PostsRepository {
           const hours = Math.floor(time / 60);
           const minutes = time % 60;
           
-          // Create time in user's local timezone, then convert to UTC
-          const localTime = currentDay.hour(hours).minute(minutes).second(0).millisecond(0);
-          const slotTime = localTime.subtract(userTimezone, 'minute'); // Convert local -> UTC
+          // Create a UTC day at midnight, then add the LOCAL time
+          // Finally subtract timezone to get actual UTC time
+          const dayAtMidnight = currentDay.startOf('day'); // Ensure we're at midnight UTC
+          const utcTimeWithLocalHours = dayAtMidnight.hour(hours).minute(minutes).second(0).millisecond(0);
+          const slotTime = utcTimeWithLocalHours.subtract(userTimezone, 'minute'); // Adjust to actual UTC
           const slotTimestamp = slotTime.valueOf();
 
           // Only consider future slots
