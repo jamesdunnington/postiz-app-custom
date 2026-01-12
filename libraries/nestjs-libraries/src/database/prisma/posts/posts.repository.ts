@@ -1531,7 +1531,13 @@ export class PostsRepository {
         // Check if this time matches any configured time slot (within 1 minute tolerance)
         const isValidTimeSlot = postingTimes.some((slot: { time: number }) => {
           const diff = Math.abs(slot.time - postTimeInMinutes);
-          return diff <= 1; // Allow 1 minute tolerance for timezone/rounding issues
+          // Check for midnight wrap-around: 23:59 (1439) is 1 minute from 00:00 (0)
+          const wrapAroundDiff = Math.min(
+            Math.abs(slot.time - postTimeInMinutes),
+            Math.abs(slot.time - postTimeInMinutes + 1440), // Add a day
+            Math.abs(slot.time - postTimeInMinutes - 1440)  // Subtract a day
+          );
+          return wrapAroundDiff <= 1; // Allow 1 minute tolerance for timezone/rounding issues
         });
 
         if (!isValidTimeSlot) {
