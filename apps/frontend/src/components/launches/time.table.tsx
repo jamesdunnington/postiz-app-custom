@@ -70,13 +70,9 @@ export const TimeTable: FC<{
     []
   );
   const addHour = useCallback(() => {
-    const calculateMinutes =
-      newDayjs()
-        .utc()
-        .startOf('day')
-        .add(hour, 'hours')
-        .add(minute, 'minutes')
-        .diff(newDayjs().utc().startOf('day'), 'minutes') - dayjs.tz().utcOffset();
+    // Calculate minutes since midnight in user's local time
+    // Backend handles timezone conversion, so just send local time minutes
+    const calculateMinutes = hour * 60 + minute;
     setCurrentTimes((prev) => [
       ...prev,
       {
