@@ -69,15 +69,32 @@ for (const [slotKey, postsInSlot] of slotGroups.entries()) {
 - ✅ **Checks for availability** before assigning a slot
 
 ### Example
+
+**Scenario:** Integration has timetable with slots at 09:00, 14:00, 18:00
+
 **Before:**
 - Post A: 2026-01-15 09:00 (created first)
 - Post B: 2026-01-15 09:00 (duplicate)
 - Post C: 2026-01-15 09:00 (duplicate)
+- Post D: 2026-01-15 18:00 (scheduled)
+- 2026-01-16 09:00 (empty gap)
+- 2026-01-16 14:00 (empty gap)
+- Post E: 2026-01-17 18:00 (last scheduled post)
 
 **After:**
 - Post A: 2026-01-15 09:00 (kept - oldest)
-- Post B: 2026-01-20 14:00 (rescheduled to next available slot at end)
-- Post C: 2026-01-21 09:00 (rescheduled to next available slot at end)
+- Post D: 2026-01-15 18:00 (unchanged)
+- Post B: 2026-01-16 09:00 (fills first gap)
+- Post C: 2026-01-16 14:00 (fills second gap)
+- Post E: 2026-01-17 18:00 (unchanged - last scheduled)
+
+**How it works:**
+1. System finds last scheduled post: 2026-01-17 18:00
+2. Starts searching from NOW: 2026-01-15 (current date)
+3. Checks timetable slots in order: 09:00, 14:00, 18:00
+4. Finds empty slot at 2026-01-16 09:00 → Assigns Post B
+5. Finds empty slot at 2026-01-16 14:00 → Assigns Post C
+6. If no gaps exist, would continue after 2026-01-17 18:00
 
 ---
 
@@ -164,11 +181,23 @@ for (const post of posts) {
 - Post A: 2026-01-15 09:00 ✅ (valid)
 - Post B: 2026-01-15 11:30 ❌ (invalid - not in timetable)
 - Post C: 2026-01-15 23:13 ❌ (invalid - not in timetable)
+- 2026-01-15 14:00 (empty gap)
+- 2026-01-15 18:00 (empty gap)
+- Post D: 2026-01-17 18:00 (last scheduled post)
 
 **After:**
 - Post A: 2026-01-15 09:00 ✅ (unchanged)
-- Post B: 2026-01-20 14:00 ✅ (rescheduled to next available valid slot)
-- Post C: 2026-01-21 09:00 ✅ (rescheduled to next available valid slot)
+- Post B: 2026-01-15 14:00 ✅ (fills first gap)
+- Post C: 2026-01-15 18:00 ✅ (fills second gap)
+- Post D: 2026-01-17 18:00 ✅ (unchanged - last scheduled)
+
+**How it works:**
+1. System finds last scheduled post: 2026-01-17 18:00
+2. Starts searching from NOW: 2026-01-15 (current date)
+3. Checks timetable slots in order: 09:00, 14:00, 18:00
+4. Finds empty slot at 2026-01-15 14:00 → Assigns Post B
+5. Finds empty slot at 2026-01-15 18:00 → Assigns Post C
+6. If no gaps exist, would continue after 2026-01-17 18:00
 
 ---
 
@@ -176,6 +205,32 @@ for (const post of posts) {
 
 ### Location
 `libraries/nestjs-libraries/src/database/prisma/posts/posts.repository.ts`
+
+### Important Clarification: How "Gap Filling" Works
+
+**How It Works:** The system finds the last post, then starts from NOW and searches forward through ALL timetable slots, filling any empty gaps up to and beyond the last scheduled post.
+
+#### Example with Hourly Timetable (00:00 - 23:00)
+
+**Timetable:** Every hour from 00:00 to 23:00 (24 slots per day)
+
+**Current Schedule (Today is 2026-01-15):**
+- 2026-01-15 09:00 (occupied)
+- 2026-01-15 10:00 (empty gap)
+- 2026-01-15 11:00 (empty gap)
+- 2026-01-15 14:00 (occupied)
+- ...
+- 2026-01-17 14:00 (last scheduled post)
+
+**When rescheduling with `searchFromEnd: true`:**
+1. ✅ Finds last post: 2026-01-17 14:00
+2. ✅ Starts from NOW: 2026-01-15 (current date)
+3. ✅ Checks slots in order: 09:00 (occupied), 10:00 (empty!), 11:00 (empty!), 12:00...
+4. ✅ Fills gap at 2026-01-15 10:00 → Assigns Post B
+5. ✅ Fills gap at 2026-01-15 11:00 → Assigns Post C
+6. ✅ If no more gaps, continues after 2026-01-17 14:00
+
+**Result:** Posts fill empty gaps first, then extend beyond the last post if needed.
 
 ### Function Signature
 ```typescript
@@ -191,7 +246,7 @@ async getNextAvailableSlots(
 
 ### How `searchFromEnd: true` Works
 
-#### Step 1: Find Last Scheduled Post
+#### Step 1: Find Last Scheduled Post and Set Search Range
 ```typescript
 if (searchFromEnd) {
   // Find the last occupied slot first
@@ -210,10 +265,14 @@ if (searchFromEnd) {
     }
   });
   
-  // Start searching from the day AFTER the last post
-  const startDay = lastPost 
-    ? dayjs.utc(lastPost.publishDate).add(1, 'day').startOf('day') 
-    : dayjs.utc();
+  // Start searching from NOW (not from the day after last post)
+  const startDay = dayjs.utc();
+  const lastPostDate = lastPost ? dayjs.utc(lastPost.publishDate) : dayjs.utc();
+  
+  // Calculate search range: from NOW to last post + 30 days
+  const maxDaysToCheck = lastPost 
+    ? Math.max(90, lastPostDate.diff(startDay, 'day') + 30)
+    : 90;
 }
 ```
 
@@ -256,12 +315,15 @@ while (slots.length < count && daysChecked < maxDaysToCheck) {
 ```
 
 ### Key Features
-- ✅ **Starts from the last scheduled post** when `searchFromEnd: true`
+- ✅ **Finds the last scheduled post** to determine search range
+- ✅ **Starts from NOW** (current date/time)
+- ✅ **Fills empty gaps** between now and the last post
+- ✅ **Extends beyond last post** if no gaps available
 - ✅ **Checks each timetable slot** for availability
 - ✅ **Skips occupied slots** automatically
 - ✅ **Prevents duplicates** with timestamp tracking
 - ✅ **Respects timezone** for accurate UTC conversion
-- ✅ **Searches up to 90 days** ahead
+- ✅ **Searches through last post + 30 days** (minimum 90 days)
 
 ---
 

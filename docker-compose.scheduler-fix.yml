@@ -1,0 +1,122 @@
+# Docker Compose configuration to ensure scheduler services are running
+# Use this to verify your production setup includes all required services
+
+version: '3.8'
+
+services:
+  # Cron service - REQUIRED for scheduler
+  cron:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: cron
+    container_name: postiz-cron
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - SENTRY_DSN=${SENTRY_DSN}
+      - NODE_ENV=${NODE_ENV:-production}
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - postiz-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Workers service - REQUIRED for scheduler
+  workers:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: workers
+    container_name: postiz-workers
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - SENTRY_DSN=${SENTRY_DSN}
+      - NODE_ENV=${NODE_ENV:-production}
+      # Social media API keys
+      - X_API_KEY=${X_API_KEY}
+      - X_API_SECRET=${X_API_SECRET}
+      - FACEBOOK_APP_ID=${FACEBOOK_APP_ID}
+      - FACEBOOK_APP_SECRET=${FACEBOOK_APP_SECRET}
+      - INSTAGRAM_APP_ID=${INSTAGRAM_APP_ID}
+      - INSTAGRAM_APP_SECRET=${INSTAGRAM_APP_SECRET}
+      - LINKEDIN_APP_ID=${LINKEDIN_APP_ID}
+      - LINKEDIN_APP_SECRET=${LINKEDIN_APP_SECRET}
+      - PINTEREST_APP_ID=${PINTEREST_APP_ID}
+      - PINTEREST_APP_SECRET=${PINTEREST_APP_SECRET}
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - postiz-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Redis - REQUIRED for job queue
+  redis:
+    image: redis:7-alpine
+    container_name: postiz-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - postiz-network
+    command: redis-server --appendonly yes
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # PostgreSQL - REQUIRED for data storage
+  postgres:
+    image: postgres:17-alpine
+    container_name: postiz-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postiz}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-postiz}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    networks:
+      - postiz-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  redis-data:
+  postgres-data:
+
+networks:
+  postiz-network:
+    driver: bridge
+
+# IMPORTANT NOTES:
+# 1. The 'cron' service runs scheduled checks every hour and every 16 minutes
+# 2. The 'workers' service processes posts from the queue
+# 3. Both services MUST be running for the scheduler to work
+# 4. Redis is used as the job queue between cron and workers
+# 5. Make sure all environment variables are properly set in your .env file

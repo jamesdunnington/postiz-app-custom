@@ -3,6 +3,7 @@ import { EventPattern, Transport } from '@nestjs/microservices';
 import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.service';
 import { WebhooksService } from '@gitroom/nestjs-libraries/database/prisma/webhooks/webhooks.service';
 import { AutopostService } from '@gitroom/nestjs-libraries/database/prisma/autopost/autopost.service';
+import * as Sentry from '@sentry/nestjs';
 
 @Controller()
 export class PostsController {
@@ -14,11 +15,24 @@ export class PostsController {
 
   @EventPattern('post', Transport.REDIS)
   async post(data: { id: string }) {
-    console.log('processing', data);
+    const { logger } = Sentry;
+    console.log('[WORKER] Processing post job:', data);
+    logger.info('Processing post job', { postId: data.id });
+    
     try {
-      return await this._postsService.post(data.id);
+      const result = await this._postsService.post(data.id);
+      console.log('[WORKER] ✅ Successfully processed post:', data.id);
+      logger.info('Successfully processed post', { postId: data.id });
+      return result;
     } catch (err) {
-      console.log("Unhandled error, let's avoid crashing the post worker", err);
+      console.error('[WORKER] ❌ Error processing post:', data.id, err);
+      logger.error('Error processing post', { postId: data.id, error: err });
+      Sentry.captureException(err, {
+        extra: {
+          context: 'Post worker failed',
+          postId: data.id,
+        },
+      });
     }
   }
 

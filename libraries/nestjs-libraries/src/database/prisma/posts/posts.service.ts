@@ -291,19 +291,41 @@ export class PostsService {
   }
 
   async post(id: string) {
+    const { logger } = Sentry;
+    console.log(`[PostsService] Starting post processing for ID: ${id}`);
+    logger.info('Starting post processing', { postId: id });
+
     const allPosts = await this.getPostsRecursively(id, true);
     const [firstPost, ...morePosts] = allPosts;
+    
     if (!firstPost) {
+      console.log(`[PostsService] ⚠️ No post found for ID: ${id}`);
+      logger.warn('No post found', { postId: id });
       return;
     }
 
+    console.log(`[PostsService] Post ${id} details:`, {
+      state: firstPost.state,
+      integration: firstPost.integration?.providerIdentifier,
+      integrationName: firstPost.integration?.name,
+      publishDate: firstPost.publishDate,
+      disabled: firstPost.integration?.disabled,
+      refreshNeeded: firstPost.integration?.refreshNeeded,
+    });
+
     // Skip posts that are already published to prevent duplicate posting
     if (firstPost.state === 'PUBLISHED') {
-      console.log(`[PostsService] Skipping post ${id} - already published`);
+      console.log(`[PostsService] ⏭️ Skipping post ${id} - already published`);
+      logger.info('Skipping already published post', { postId: id });
       return;
     }
 
     if (firstPost.integration?.refreshNeeded) {
+      console.log(`[PostsService] ⚠️ Post ${id} - integration needs refresh`);
+      logger.warn('Integration needs refresh', { 
+        postId: id, 
+        integration: firstPost.integration?.providerIdentifier 
+      });
       await this._notificationService.inAppNotification(
         firstPost.organizationId,
         `We couldn't post to ${firstPost.integration?.providerIdentifier} for ${firstPost?.integration?.name}`,
@@ -314,6 +336,11 @@ export class PostsService {
     }
 
     if (firstPost.integration?.disabled) {
+      console.log(`[PostsService] ⚠️ Post ${id} - integration is disabled`);
+      logger.warn('Integration is disabled', { 
+        postId: id, 
+        integration: firstPost.integration?.providerIdentifier 
+      });
       await this._notificationService.inAppNotification(
         firstPost.organizationId,
         `We couldn't post to ${firstPost.integration?.providerIdentifier} for ${firstPost?.integration?.name}`,
@@ -324,12 +351,20 @@ export class PostsService {
     }
 
     try {
+      console.log(`[PostsService] 📤 Attempting to post to ${firstPost.integration?.providerIdentifier}...`);
+      logger.info('Attempting to post to social media', { 
+        postId: id, 
+        integration: firstPost.integration?.providerIdentifier,
+        integrationName: firstPost.integration?.name 
+      });
+
       const finalPost = await this.postSocial(firstPost.integration!, [
         firstPost,
         ...morePosts,
       ]);
 
       if (firstPost?.intervalInDays) {
+        console.log(`[PostsService] 🔄 Scheduling recurring post ${id} for ${firstPost.intervalInDays} days later`);
         this._workerServiceProducer.emit('post', {
           id,
           options: {
@@ -342,6 +377,12 @@ export class PostsService {
       }
 
       if (!finalPost?.postId || !finalPost?.releaseURL) {
+        console.error(`[PostsService] ❌ Post ${id} failed - no postId or releaseURL returned`);
+        logger.error('Post failed - no postId or releaseURL', { 
+          postId: id, 
+          integration: firstPost.integration?.providerIdentifier,
+          finalPost 
+        });
         await this._postRepository.changeState(firstPost.id, 'ERROR');
         await this._notificationService.inAppNotification(
           firstPost.organizationId,
@@ -352,13 +393,30 @@ export class PostsService {
 
         return;
       }
+
+      console.log(`[PostsService] ✅ Post ${id} successfully published to ${firstPost.integration?.providerIdentifier}`);
+      logger.info('Post successfully published', { 
+        postId: id, 
+        integration: firstPost.integration?.providerIdentifier,
+        releaseURL: finalPost.releaseURL 
+      });
     } catch (err: any) {
+      console.error(`[PostsService] ❌ Exception while posting ${id}:`, err);
+      logger.error('Exception while posting', { 
+        postId: id, 
+        integration: firstPost.integration?.providerIdentifier,
+        error: err,
+        errorMessage: err?.message,
+        errorStack: err?.stack 
+      });
+
       await this._postRepository.changeState(
         firstPost.id,
         'ERROR',
         err,
         allPosts
       );
+      
       if (err instanceof BadBody) {
         await this._notificationService.inAppNotification(
           firstPost.organizationId,
@@ -378,6 +436,15 @@ export class PostsService {
           err
         );
       }
+
+      Sentry.captureException(err, {
+        extra: {
+          context: 'Post publishing failed',
+          postId: id,
+          integration: firstPost.integration?.providerIdentifier,
+          integrationName: firstPost.integration?.name,
+        },
+      });
 
       return;
     }

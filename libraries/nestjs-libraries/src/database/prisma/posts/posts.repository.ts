@@ -945,7 +945,7 @@ export class PostsRepository {
     let daysChecked = 0; // Track days checked for logging
     
     if (searchFromEnd) {
-      // For duplicate resolution: find the last occupied slot first, then continue from there
+      // For duplicate resolution: find the last occupied slot first
       const lastPost = await this._post.model.post.findFirst({
         where: {
           integrationId,
@@ -961,12 +961,19 @@ export class PostsRepository {
         }
       });
       
-      const startDay = lastPost ? dayjs.utc(lastPost.publishDate).add(1, 'day').startOf('day') : dayjs.utc();
-      console.log(`[getNextAvailableSlots] Starting search from ${startDay.format('YYYY-MM-DD')} (after last scheduled post at ${lastPost ? dayjs.utc(lastPost.publishDate).format('YYYY-MM-DD HH:mm') : 'N/A'})`);
+      // Start from NOW, but we'll search up to the last post's date + extra days
+      const startDay = dayjs.utc();
+      const lastPostDate = lastPost ? dayjs.utc(lastPost.publishDate) : dayjs.utc();
+      const maxDaysToCheck = lastPost 
+        ? Math.max(90, lastPostDate.diff(startDay, 'day') + 30) // Search through last post + 30 days
+        : 90;
+      
+      console.log(`[getNextAvailableSlots] Starting search from ${startDay.format('YYYY-MM-DD')} (NOW)`);
+      console.log(`[getNextAvailableSlots] Last scheduled post at ${lastPost ? lastPostDate.format('YYYY-MM-DD HH:mm') : 'N/A'}`);
+      console.log(`[getNextAvailableSlots] Will search ${maxDaysToCheck} days to fill gaps and extend if needed`);
       console.log(`[getNextAvailableSlots] Will search using configured posting times: ${postingTimes.slice(0, 3).map(t => `${Math.floor(t.time/60)}:${String(t.time%60).padStart(2,'0')}`).join(', ')}...`);
       
       let currentDay = startDay;
-      const maxDaysToCheck = 90;
 
       while (slots.length < count && daysChecked < maxDaysToCheck) {
       for (const { time } of postingTimes) {
