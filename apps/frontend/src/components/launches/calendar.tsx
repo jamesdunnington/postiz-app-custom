@@ -147,10 +147,8 @@ export const DayView = () => {
         <Fragment key={option[0].time}>
           <div className="text-center text-[14px]">
             {newDayjs()
-              .utc()
               .startOf('day')
               .add(option[0].time, 'minute')
-              .local()
               .format(isUSCitizen() ? 'hh:mm A' : 'LT')}
           </div>
           <div
@@ -166,8 +164,7 @@ export const DayView = () => {
               <CalendarColumn
                 getDate={currentDay
                   .startOf('day')
-                  .add(option[0].time, 'minute')
-                  .local()}
+                  .add(option[0].time, 'minute')}
               />
             </CalendarContext.Provider>
           </div>

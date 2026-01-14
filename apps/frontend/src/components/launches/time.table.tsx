@@ -84,11 +84,10 @@ export const TimeTable: FC<{
     return sortBy(
       currentTimes.map(({ time }) => ({
         value: time,
-        formatted: dayjs
-          .utc()
+        // time is already in local minutes (0-1439), so display directly
+        formatted: newDayjs()
           .startOf('day')
           .add(time, 'minutes')
-          .local()
           .format('HH:mm'),
       })),
       (p) => p.value
