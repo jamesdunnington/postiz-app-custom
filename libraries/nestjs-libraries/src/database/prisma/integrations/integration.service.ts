@@ -880,14 +880,17 @@ export class IntegrationService {
       
       // Get all posts with duplicate schedules (actual posts, not summaries)
       const allDuplicates = await this._postsRepository.findDuplicateSchedules();
-      const integrationDuplicates = allDuplicates.filter(p => p.integrationId === integrationId);
+      // ONLY reschedule QUEUE posts - NEVER ERROR or PUBLISHED
+      const integrationDuplicates = allDuplicates.filter(p => 
+        p.integrationId === integrationId && p.state === 'QUEUE'
+      );
 
       if (integrationDuplicates.length === 0) {
-        console.log(`No duplicate posts found for integration ${integrationId}`);
+        console.log(`No duplicate QUEUE posts found for integration ${integrationId}`);
         return { rescheduled: 0 };
       }
 
-      console.log(`Found ${integrationDuplicates.length} posts with duplicates for integration ${integrationId}`);
+      console.log(`Found ${integrationDuplicates.length} QUEUE posts with duplicates for integration ${integrationId}`);
 
       // Parse posting times
       const postingTimes = JSON.parse(integration.postingTimes || '[]');
@@ -914,13 +917,21 @@ export class IntegrationService {
       for (const [slotKey, postsInSlot] of slotGroups.entries()) {
         if (postsInSlot.length <= 1) continue;
 
-        console.log(`Timeslot ${slotKey}: ${postsInSlot.length} posts - keeping oldest, rescheduling ${postsInSlot.length - 1}`);
+        const queuePostsInSlot = postsInSlot.filter(p => p.state === 'QUEUE');
+        console.log(`Timeslot ${slotKey}: ${postsInSlot.length} total posts (${queuePostsInSlot.length} QUEUE) - rescheduling ${Math.max(0, queuePostsInSlot.length - 1)} QUEUE posts`);
 
         // Already sorted by createdAt (oldest first), skip first, reschedule rest
-        const postsToReschedule = postsInSlot.slice(1);
+        // ONLY reschedule QUEUE posts - filter out any ERROR or PUBLISHED posts
+        const postsToReschedule = postsInSlot.slice(1).filter(p => p.state === 'QUEUE');
 
         for (const post of postsToReschedule) {
           try {
+            // Double-check state before rescheduling (safety check)
+            if (post.state !== 'QUEUE') {
+              console.log(`⚠️ Skipping post ${post.id} - state is ${post.state}, not QUEUE`);
+              continue;
+            }
+            
             const currentDate = dayjs(post.publishDate);
             const nextSlot = await this._postsRepository.getNextAvailableSlots(
               post.organizationId,
@@ -1063,6 +1074,12 @@ export class IntegrationService {
 
         for (const post of posts) {
           try {
+            // Safety check: Only reschedule QUEUE posts (should already be filtered, but double-check)
+            if (post.state && post.state !== 'QUEUE') {
+              console.log(`[INVALID TIME SLOTS] ⚠️ Skipping post ${post.id} - state is ${post.state}, not QUEUE`);
+              continue;
+            }
+            
             const postingTimes = post.configuredTimes.map((time: number) => ({ time }));
 
             // Get next available slot at the end of schedule
