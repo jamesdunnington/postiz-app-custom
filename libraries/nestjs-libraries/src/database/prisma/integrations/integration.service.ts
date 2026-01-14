@@ -1034,6 +1034,77 @@ export class IntegrationService {
     }
   }
 
+  async checkAndRescheduleDuplicates(orgId?: string, integrationId?: string) {
+    const { logger } = Sentry;
+    console.log('[CHECK DUPLICATES] Starting duplicate schedule check...');
+    logger.info('Starting duplicate schedule check');
+
+    try {
+      // Find all duplicate schedules
+      const allDuplicates = await this._postsRepository.findDuplicateSchedules();
+      
+      // Filter by organization and/or integration if specified
+      const filteredDuplicates = allDuplicates.filter(p => {
+        const matchesOrg = !orgId || p.organizationId === orgId;
+        const matchesIntegration = !integrationId || p.integrationId === integrationId;
+        return matchesOrg && matchesIntegration && p.state === 'QUEUE';
+      });
+
+      if (filteredDuplicates.length === 0) {
+        console.log('[CHECK DUPLICATES] ✅ No duplicate schedules found');
+        logger.info('No duplicate schedules found');
+        return { rescheduled: 0, checked: 0 };
+      }
+
+      console.log(`[CHECK DUPLICATES] ⚠️ Found ${filteredDuplicates.length} duplicate posts`);
+      logger.warn(`Found ${filteredDuplicates.length} duplicate posts`);
+
+      let totalRescheduled = 0;
+      let totalChecked = filteredDuplicates.length;
+
+      // Group by integration
+      const byIntegration = new Map<string, typeof filteredDuplicates>();
+      for (const dup of filteredDuplicates) {
+        if (!byIntegration.has(dup.integrationId)) {
+          byIntegration.set(dup.integrationId, []);
+        }
+        byIntegration.get(dup.integrationId)!.push(dup);
+      }
+
+      // Process each integration's duplicates
+      for (const [intId, dups] of byIntegration.entries()) {
+        console.log(`[CHECK DUPLICATES] Processing ${dups.length} duplicate(s) for integration ${intId}`);
+        
+        try {
+          const integration = await this._integrationRepository.getIntegrationByIdOnly(intId);
+          if (integration) {
+            const result = await this.resolveDuplicatesForIntegration(intId, integration);
+            totalRescheduled += result.rescheduled;
+          }
+        } catch (err) {
+          logger.error(`Error processing integration ${intId}: ${err instanceof Error ? err.message : String(err)}`);
+          console.error(`[CHECK DUPLICATES] Error processing integration ${intId}:`, err);
+        }
+      }
+
+      console.log(`[CHECK DUPLICATES] ✅ Completed - rescheduled ${totalRescheduled} of ${totalChecked} posts`);
+      logger.info(`Completed duplicate check - rescheduled ${totalRescheduled} of ${totalChecked} posts`);
+      
+      return { rescheduled: totalRescheduled, checked: totalChecked };
+    } catch (err) {
+      Sentry.captureException(err, {
+        extra: {
+          context: 'Failed to check and reschedule duplicates',
+          orgId,
+          integrationId,
+        },
+      });
+      logger.error(`Error during duplicate check: ${err instanceof Error ? err.message : String(err)}`);
+      console.error('[CHECK DUPLICATES] Error:', err);
+      return { rescheduled: 0, checked: 0 };
+    }
+  }
+
   async rescheduleInvalidTimeSlots(orgId?: string, integrationId?: string) {
     const { logger } = Sentry;
     console.log('[INVALID TIME SLOTS] Starting validation of scheduled post times...');

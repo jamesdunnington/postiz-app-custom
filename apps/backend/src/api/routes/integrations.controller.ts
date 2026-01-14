@@ -671,4 +671,20 @@ export class IntegrationsController {
           : 'All posts are already at valid time slots',
     };
   }
+
+  @Post('/check-duplicates')
+  async checkDuplicates(@GetOrgFromRequest() org: Organization) {
+    const result = await this._integrationService.checkAndRescheduleDuplicates(
+      org.id
+    );
+    return {
+      success: true,
+      rescheduled: result.rescheduled,
+      checked: result.checked,
+      message:
+        result.rescheduled > 0
+          ? `Rescheduled ${result.rescheduled} of ${result.checked} duplicate posts`
+          : 'No duplicate schedules found',
+    };
+  }
 }

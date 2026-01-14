@@ -265,6 +265,42 @@ export const Filters = () => {
     }
   }, [fetch, toast, calendar, isValidating]);
 
+  const checkDuplicates = useCallback(async () => {
+    if (isValidating) return;
+
+    setIsValidating(true);
+    toast.show('Checking for duplicate schedules...', 'warning');
+
+    try {
+      const response = await fetch('/integrations/check-duplicates', {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        toast.show('Failed to check duplicates', 'warning');
+        setIsValidating(false);
+        return;
+      }
+
+      const result = await response.json();
+
+      if (result.rescheduled > 0) {
+        toast.show(
+          `✓ Rescheduled ${result.rescheduled} duplicate posts`,
+          'success'
+        );
+        // Refresh calendar to show updated posts
+        calendar.reloadCalendarView();
+      } else {
+        toast.show('✓ No duplicate schedules found', 'success');
+      }
+    } catch (error) {
+      toast.show('Failed to check duplicates', 'warning');
+    } finally {
+      setIsValidating(false);
+    }
+  }, [fetch, toast, calendar, isValidating]);
+
   return (
     <div className="text-textColor flex flex-col md:flex-row gap-[8px] items-center select-none">
       <div className="flex flex-grow flex-row items-center gap-[10px]">
@@ -345,6 +381,29 @@ export const Filters = () => {
                 />
               </svg>
               {isValidating ? 'Validating...' : 'Validate Slots'}
+            </div>
+            <div
+              onClick={checkDuplicates}
+              className={clsx(
+                'hover:text-textItemFocused hover:bg-boxFocused py-[3px] px-[9px] flex justify-center items-center gap-[6px] rounded-[8px] transition-all text-[14px] bg-newBgColorInner border border-newTableBorder',
+                isValidating ? 'cursor-wait opacity-60' : 'cursor-pointer'
+              )}
+              title="Find and reschedule duplicate posts scheduled at the same time"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                className={clsx(isValidating && 'animate-spin')}
+              >
+                <path
+                  d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20ZM16.59 7.58L10 14.17L7.41 11.59L6 13L10 17L18 9L16.59 7.58Z"
+                  fill="currentColor"
+                />
+              </svg>
+              {isValidating ? 'Checking...' : 'Check Duplicates'}
             </div>
           </div>
         </div>
