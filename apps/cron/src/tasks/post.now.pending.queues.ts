@@ -63,7 +63,16 @@ export class PostNowPendingQueues {
         });
       }
 
-      console.log(`[POST NOW PENDING] ✅ Successfully added ${notExists.length} pending posts to queue`);\n      logger.info(`Successfully added ${notExists.length} pending posts to queue`);\n    } catch (err) {\n      console.error('[POST NOW PENDING] ❌ Error in cron job:', err);\n      logger.error('Error in PostNowPendingQueues cron job', { error: err });\n      Sentry.captureException(err, {\n        extra: {\n          context: 'PostNowPendingQueues cron job failed',\n        },\n      });\n    }\n  }\n}
+      console.log(`[POST NOW PENDING] ✅ Successfully added ${notExists.length} pending posts to queue`);
+      logger.info(`Successfully added ${notExists.length} pending posts to queue`);
+    } catch (err) {
+      console.error('[POST NOW PENDING] ❌ Error in cron job:', err);
+      logger.error('Error in PostNowPendingQueues cron job', { error: err });
+      Sentry.captureException(err, {
+        extra: {
+          context: 'PostNowPendingQueues cron job failed',
+        },
+      });
     }
   }
 }
