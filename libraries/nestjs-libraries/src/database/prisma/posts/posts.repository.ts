@@ -1627,4 +1627,35 @@ export class PostsRepository {
 
     return invalidPosts;
   }
+
+  /**
+   * Get all QUEUE posts for BullMQ sync - returns posts scheduled in the next 30 days
+   * Used by SyncBullMqJobs to ensure all posts have correct BullMQ job delays
+   */
+  async getAllQueuedPostsForSync() {
+    return this._post.model.post.findMany({
+      where: {
+        state: 'QUEUE',
+        deletedAt: null,
+        parentPostId: null, // Only parent posts get queued
+        publishDate: {
+          gte: dayjs.utc().subtract(1, 'hour').toDate(), // Include recently missed
+          lte: dayjs.utc().add(30, 'day').toDate(), // Next 30 days
+        },
+        integration: {
+          refreshNeeded: false,
+          inBetweenSteps: false,
+          disabled: false,
+        },
+      },
+      select: {
+        id: true,
+        publishDate: true,
+        integrationId: true,
+      },
+      orderBy: {
+        publishDate: 'asc',
+      },
+    });
+  }
 }
