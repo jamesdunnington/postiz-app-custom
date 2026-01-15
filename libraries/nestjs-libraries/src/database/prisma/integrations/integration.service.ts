@@ -819,7 +819,8 @@ export class IntegrationService {
         await this._postsRepository.updatePostPublishDate(post.id, newSlot);
         usedSlots.add(slotTimestamp);
 
-        // Re-queue the post in the worker
+        // Delete old BullMQ job (if exists) and re-queue the post with new delay
+        await this._workerServiceProducer.delete('post', post.id);
         this._workerServiceProducer.emit('post', {
           id: post.id,
           options: {
@@ -950,8 +951,20 @@ export class IntegrationService {
                 nextSlot[0].toISOString()
               );
               
+              // Delete old BullMQ job and add new one with correct delay
+              await this._workerServiceProducer.delete('post', post.id);
+              this._workerServiceProducer.emit('post', {
+                id: post.id,
+                options: {
+                  delay: nextSlotDate.diff(dayjs(), 'millisecond'),
+                },
+                payload: {
+                  id: post.id,
+                },
+              });
+              
               logger.info(`Rescheduled duplicate post ${post.id} from ${currentDate.format('YYYY-MM-DD HH:mm')} to ${nextSlotDate.format('YYYY-MM-DD HH:mm')}`);
-              console.log(`✓ Rescheduled post ${post.id} from ${currentDate.format('YYYY-MM-DD HH:mm')} to ${nextSlotDate.format('YYYY-MM-DD HH:mm')}`);
+              console.log(`✓ Rescheduled post ${post.id} from ${currentDate.format('YYYY-MM-DD HH:mm')} to ${nextSlotDate.format('YYYY-MM-DD HH:mm')} (BullMQ job updated)`);
               rescheduledCount++;
             } else {
               console.log(`No available slots found for post ${post.id}`);
