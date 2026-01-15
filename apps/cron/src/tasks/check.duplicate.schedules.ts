@@ -114,7 +114,8 @@ export class CheckDuplicateSchedules {
             // Update the post's publish date
             await this._postsRepository.updatePostPublishDate(post.id, newSlot);
 
-            // Re-queue the post in the worker
+            // Delete old BullMQ job and re-queue the post in the worker
+            await this._bullMqClient.delete('post', post.id);
             this._bullMqClient.emit('post', {
               id: post.id,
               options: {

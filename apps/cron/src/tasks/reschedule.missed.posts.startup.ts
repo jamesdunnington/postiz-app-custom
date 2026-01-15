@@ -2,6 +2,8 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
 import { IntegrationRepository } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.repository';
 import { PostsRepository } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.repository';
+import { BullMqClient } from '@gitroom/nestjs-libraries/bull-mq-transport-new/client';
+import dayjs from 'dayjs';
 import * as Sentry from '@sentry/nestjs';
 
 @Injectable()
@@ -9,7 +11,8 @@ export class RescheduleMissedPostsStartup implements OnModuleInit {
   constructor(
     private _integrationService: IntegrationService,
     private _integrationRepository: IntegrationRepository,
-    private _postsRepository: PostsRepository
+    private _postsRepository: PostsRepository,
+    private _workerServiceProducer: BullMqClient
   ) {}
 
   async onModuleInit() {
@@ -246,9 +249,21 @@ export class RescheduleMissedPostsStartup implements OnModuleInit {
             // Update the post's publish date
             await this._postsRepository.updatePostPublishDate(post.id, newSlot);
 
+            // Delete old BullMQ job and create new one with updated delay
+            await this._workerServiceProducer.delete('post', post.id);
+            this._workerServiceProducer.emit('post', {
+              id: post.id,
+              options: {
+                delay: dayjs(newSlot).diff(dayjs(), 'millisecond'),
+              },
+              payload: {
+                id: post.id,
+              },
+            });
+
             totalFixed++;
             console.log(
-              `[STARTUP CHECK] ✓ Moved duplicate post ${post.id} to available time slot`
+              `[STARTUP CHECK] ✓ Moved duplicate post ${post.id} to available time slot (BullMQ job updated)`
             );
             logger.info(
               `Fixed duplicate: moved post ${post.id} to ${newSlot}`

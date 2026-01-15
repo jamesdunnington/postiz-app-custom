@@ -1176,7 +1176,8 @@ export class PostsService {
 
         await this._postRepository.updatePostPublishDate(post.id, newSlot);
 
-        // Re-queue the post in the worker
+        // Delete old BullMQ job and re-queue the post in the worker
+        await this._workerServiceProducer.delete('post', post.id);
         this._workerServiceProducer.emit('post', {
           id: post.id,
           options: {

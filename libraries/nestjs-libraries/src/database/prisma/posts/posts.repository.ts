@@ -902,7 +902,11 @@ export class PostsRepository {
         integrationId,
         state: 'QUEUE',
         publishDate: {
-          lt: dayjs.utc().toDate(),
+          // Only get posts older than 30 minutes to avoid conflict with:
+          // 1. Posts currently being published (need buffer)
+          // 2. Posts in 15-30 min window (handled by PostNowPendingQueues which posts them immediately)
+          // Posts 15-30 min old should be posted, not rescheduled
+          lt: dayjs.utc().subtract(30, 'minute').toDate(),
         },
         deletedAt: null,
         parentPostId: null,
@@ -1467,7 +1471,9 @@ export class PostsRepository {
         state: 'QUEUE',
         deletedAt: null,
         publishDate: {
-          gt: dayjs.utc().toDate(), // Only future posts
+          // Skip posts in the current hour to avoid interfering with posts being published
+          // Add 1 hour buffer to prevent rescheduling posts that are about to be published
+          gt: dayjs.utc().add(1, 'hour').toDate(),
         },
         ...(orgId ? { organizationId: orgId } : {}),
         ...(integrationId ? { integrationId } : {}),
