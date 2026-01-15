@@ -393,12 +393,34 @@ export class PostsRepository {
     let finalPublishDate = dayjs(date).toDate();
 
     // Check for duplicate if post is QUEUE or DRAFT
+    // Use a transaction to prevent race conditions
     if (post.state === 'QUEUE' || post.state === 'DRAFT') {
-      const existingPost = await this.checkForDuplicateAtTime(
-        post.integrationId,
-        finalPublishDate,
-        id // Exclude current post
-      );
+      const existingPost = await this._post.model.$transaction(async (tx) => {
+        // Lock the rows to prevent concurrent updates at the same time
+        const targetMinute = dayjs(finalPublishDate).second(0).millisecond(0);
+        const startOfMinute = targetMinute.toDate();
+        const endOfMinute = targetMinute.add(1, 'minute').toDate();
+
+        return tx.post.findFirst({
+          where: {
+            integrationId: post.integrationId,
+            publishDate: {
+              gte: startOfMinute,
+              lt: endOfMinute,
+            },
+            deletedAt: null,
+            state: {
+              in: ['QUEUE', 'DRAFT', 'PUBLISHED'],
+            },
+            id: { not: id }, // Exclude current post
+          },
+          select: {
+            id: true,
+            publishDate: true,
+            state: true,
+          },
+        });
+      });
 
       if (existingPost) {
         console.log(
@@ -480,14 +502,37 @@ export class PostsRepository {
 
     for (const value of body.value) {
       // Check for duplicate schedule and auto-reschedule if needed
+      // Use a transaction with FOR UPDATE lock to prevent race conditions
       let finalPublishDate = dayjs(date).toDate();
       
       if (state === 'schedule' && body.integration?.id) {
-        const existingPost = await this.checkForDuplicateAtTime(
-          body.integration.id,
-          finalPublishDate,
-          value.id // Exclude current post if updating
-        );
+        // Use a transaction to atomically check and reserve the time slot
+        const existingPost = await this._post.model.$transaction(async (tx) => {
+          // Lock the rows to prevent concurrent inserts at the same time
+          const targetMinute = dayjs(finalPublishDate).second(0).millisecond(0);
+          const startOfMinute = targetMinute.toDate();
+          const endOfMinute = targetMinute.add(1, 'minute').toDate();
+
+          return tx.post.findFirst({
+            where: {
+              integrationId: body.integration!.id,
+              publishDate: {
+                gte: startOfMinute,
+                lt: endOfMinute,
+              },
+              deletedAt: null,
+              state: {
+                in: ['QUEUE', 'DRAFT', 'PUBLISHED'],
+              },
+              ...(value.id ? { id: { not: value.id } } : {}),
+            },
+            select: {
+              id: true,
+              publishDate: true,
+              state: true,
+            },
+          });
+        });
         
         if (existingPost) {
           console.log(

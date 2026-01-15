@@ -795,31 +795,38 @@ export class PostsService {
         return [] as any[];
       }
 
+      const jobIdToDelete = previousPost ? previousPost : posts?.[0]?.id;
+      console.log(`[createPost] Deleting previous BullMQ job: ${jobIdToDelete} (previousPost: ${previousPost})`);
+      
       await this._workerServiceProducer.delete(
         'post',
-        previousPost ? previousPost : posts?.[0]?.id
+        jobIdToDelete
       );
 
       if (
         body.type === 'now' ||
         (body.type === 'schedule' && dayjs(body.date).isAfter(dayjs()))
       ) {
+        const delay = body.type === 'now'
+          ? 0
+          : dayjs(posts[0].publishDate).diff(dayjs(), 'millisecond');
+        
+        console.log(`[createPost] Queueing post ${posts[0].id} with delay ${delay}ms (publishDate: ${posts[0].publishDate}, now: ${dayjs().format()})`);
+        
         this._workerServiceProducer.emit('post', {
           id: posts[0].id,
           options: {
-            delay:
-              body.type === 'now'
-                ? 0
-                : dayjs(posts[0].publishDate).diff(dayjs(), 'millisecond'),
+            delay,
           },
           payload: {
             id: posts[0].id,
-            delay:
-              body.type === 'now'
-                ? 0
-                : dayjs(posts[0].publishDate).diff(dayjs(), 'millisecond'),
+            delay,
           },
         });
+        
+        console.log(`[createPost] ✓ Post ${posts[0].id} queued successfully for integration ${post.integration.id}`);
+      } else {
+        console.log(`[createPost] ⏭️ Skipping queue for post ${posts[0].id} (type: ${body.type}, date: ${body.date}, isPast: ${!dayjs(body.date).isAfter(dayjs())})`);
       }
 
       Sentry.metrics.count("post_created", 1);

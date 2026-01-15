@@ -27,6 +27,7 @@ export class BullMqClient extends ClientProxy {
   }
 
   delete(pattern: string, jobId: string) {
+    console.log(`[BullMQ] Deleting job: ${jobId} from queue: ${pattern}`);
     const queue = this.getQueue(pattern);
     return queue.remove(jobId);
   }
@@ -91,7 +92,9 @@ export class BullMqClient extends ClientProxy {
   }
 
   async dispatchEvent(packet: ReadPacket<any>): Promise<any> {
-    console.log('event to dispatch: ', packet);
+    const jobId = packet.data.id ?? v4();
+    const delay = packet.data.options?.delay || 0;
+    console.log(`[BullMQ] Dispatching event to queue ${packet.pattern}, jobId: ${jobId}, delay: ${delay}ms`);
     const queue = this.getQueue(packet.pattern);
     if (packet?.data?.options?.every) {
       const { every, immediately } = packet.data.options;
@@ -111,11 +114,13 @@ export class BullMqClient extends ClientProxy {
       return;
     }
 
+    const finalJobId = packet.data.id ?? v4();
     await queue.add(packet.pattern, packet.data, {
-      jobId: packet.data.id ?? v4(),
+      jobId: finalJobId,
       ...packet.data.options,
       removeOnComplete: true,
       removeOnFail: true,
     });
+    console.log(`[BullMQ] ✓ Job ${finalJobId} added to queue ${packet.pattern}`);
   }
 }
