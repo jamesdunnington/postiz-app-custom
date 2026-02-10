@@ -479,20 +479,111 @@ export class IntegrationService {
 
     if (integrationProvider.analytics) {
       try {
+        // Fetch current period analytics
         const loadAnalytics = await integrationProvider.analytics(
           getIntegration.internalId,
           getIntegration.token,
           +date
         );
+
+        // Fetch previous period for percentage change calculation
+        // Check cache first to avoid unnecessary API calls
+        let previousPeriodAnalytics = null;
+        const previousPeriodKey = `integration:${org.id}:${integration}:${date}:previous`;
+        const cachedPreviousPeriod = await ioRedis.get(previousPeriodKey);
+        
+        if (cachedPreviousPeriod) {
+          previousPeriodAnalytics = JSON.parse(cachedPreviousPeriod);
+          Sentry.logger.debug(
+            Sentry.logger.fmt`Using cached previous period analytics for integration ${integration}`
+          );
+        } else {
+          try {
+            // Fetch previous period data (same duration before current period)
+            previousPeriodAnalytics = await integrationProvider.analytics(
+              getIntegration.internalId,
+              getIntegration.token,
+              +date * 2 // Double the date range to get comparison period
+            );
+            
+            Sentry.logger.info(
+              Sentry.logger.fmt`Fetched previous period analytics for integration ${integration}`,
+              { 
+                provider: getIntegration.providerIdentifier,
+                dateRange: +date * 2
+              }
+            );
+            
+            // Cache previous period data separately
+            await ioRedis.set(
+              previousPeriodKey,
+              JSON.stringify(previousPeriodAnalytics),
+              'EX',
+              !process.env.NODE_ENV || process.env.NODE_ENV === 'development'
+                ? 1
+                : 3600
+            );
+          } catch (err) {
+            // If previous period fetch fails, continue without percentage change
+            Sentry.logger.warn(
+              'Failed to fetch previous period analytics',
+              { 
+                integration,
+                error: err instanceof Error ? err.message : String(err),
+                provider: getIntegration.providerIdentifier
+              }
+            );
+          }
+        }
+
+        // Calculate percentage changes
+        const analyticsWithPercentage = loadAnalytics.map((metric: any) => {
+          let percentageChange = 0;
+          
+          if (previousPeriodAnalytics && Array.isArray(previousPeriodAnalytics)) {
+            const previousMetric = previousPeriodAnalytics.find(
+              (pm: any) => pm.label === metric.label
+            );
+            
+            if (previousMetric && previousMetric.data && metric.data) {
+              // Calculate total for current period
+              const currentTotal = metric.data.reduce(
+                (sum: number, item: any) => sum + (parseFloat(item.total) || 0),
+                0
+              );
+              
+              // Calculate total for previous period (only the comparison portion)
+              const previousData = previousMetric.data.slice(-parseInt(date));
+              const previousTotal = previousData.reduce(
+                (sum: number, item: any) => sum + (parseFloat(item.total) || 0),
+                0
+              );
+              
+              // Calculate percentage change
+              if (previousTotal > 0) {
+                percentageChange = ((currentTotal - previousTotal) / previousTotal) * 100;
+              } else if (currentTotal > 0) {
+                percentageChange = 100; // If previous was 0 and current is positive, it's 100% increase
+              }
+            }
+          }
+          
+          return {
+            ...metric,
+            percentageChange: Math.round(percentageChange), // Round to nearest integer
+          };
+        });
+
+        // Cache the enhanced analytics
         await ioRedis.set(
           `integration:${org.id}:${integration}:${date}`,
-          JSON.stringify(loadAnalytics),
+          JSON.stringify(analyticsWithPercentage),
           'EX',
           !process.env.NODE_ENV || process.env.NODE_ENV === 'development'
             ? 1
             : 3600
         );
-        return loadAnalytics;
+        return analyticsWithPercentage;
       } catch (e) {
         if (e instanceof RefreshToken) {
           return this.checkAnalytics(org, integration, date, true);
