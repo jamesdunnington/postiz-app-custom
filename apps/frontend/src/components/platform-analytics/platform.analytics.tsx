@@ -35,7 +35,7 @@ export const PlatformAnalytics = () => {
   const { disableXAnalytics } = useVariables();
 
   const [current, setCurrent] = useState(0);
-  const [key, setKey] = useState(7);
+  const [key, setKey] = useState(30);
   const [refresh, setRefresh] = useState(false);
   const [collapseMenu, setCollapseMenu] = useCookie('collapseMenu', '0');
   const toaster = useToaster();
