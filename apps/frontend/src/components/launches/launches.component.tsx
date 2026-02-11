@@ -246,9 +246,17 @@ export const MenuComponent: FC<
     
     // Prevent drag from interfering
     e.stopPropagation();
-    // Toggle selection: if already selected, deselect (set to null), otherwise select this integration
-    setSelectedIntegrationId(isSelected ? null : integration.id);
-  }, [integration, isSelected, setSelectedIntegrationId, refreshChannel]);
+    
+    // Toggle selection using functional update to get current state
+    setSelectedIntegrationId((currentId) => {
+      // If this integration is currently selected, deselect it
+      if (currentId === integration.id) {
+        return null;
+      }
+      // Otherwise, select this integration
+      return integration.id;
+    });
+  }, [integration, setSelectedIntegrationId, refreshChannel]);
   
   const [collected, drag, dragPreview] = useDrag(() => ({
     type: 'menu',
