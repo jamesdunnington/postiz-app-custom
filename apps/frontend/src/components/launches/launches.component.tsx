@@ -237,10 +237,18 @@ export const MenuComponent: FC<
   const { selectedIntegrationId, setSelectedIntegrationId } = useCalendar();
   const isSelected = selectedIntegrationId === integration.id;
   
-  const handleIntegrationClick = useCallback(() => {
+  const handleIntegrationClick = useCallback((e: React.MouseEvent) => {
+    // Handle refresh case first
+    if (integration.refreshNeeded) {
+      refreshChannel(integration)();
+      return;
+    }
+    
+    // Prevent drag from interfering
+    e.stopPropagation();
     // Toggle selection: if already selected, deselect (set to null), otherwise select this integration
     setSelectedIntegrationId(isSelected ? null : integration.id);
-  }, [integration.id, isSelected, setSelectedIntegrationId]);
+  }, [integration, isSelected, setSelectedIntegrationId, refreshChannel]);
   
   const [collected, drag, dragPreview] = useDrag(() => ({
     type: 'menu',
@@ -252,13 +260,10 @@ export const MenuComponent: FC<
     <div
       // @ts-ignore
       ref={dragPreview}
+      onClick={handleIntegrationClick}
       {...(integration.refreshNeeded && {
-        onClick: refreshChannel(integration),
         'data-tooltip-id': 'tooltip',
         'data-tooltip-content': 'Channel disconnected, click to reconnect.',
-      })}
-      {...(!integration.refreshNeeded && {
-        onClick: handleIntegrationClick,
       })}
       {...(collapsed
         ? {

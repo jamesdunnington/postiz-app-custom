@@ -254,7 +254,7 @@ export const CalendarWeekProvider: FC<{
     if (!selectedIntegrationId) {
       return internalData;
     }
-    return internalData.filter((post: any) => post.integrationId === selectedIntegrationId);
+    return internalData.filter((post: any) => post.integration?.id === selectedIntegrationId);
   }, [internalData, selectedIntegrationId]);
 
   return (
