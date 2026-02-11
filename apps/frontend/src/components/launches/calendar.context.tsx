@@ -3,8 +3,10 @@
 import 'reflect-metadata';
 import {
   createContext,
+  Dispatch,
   FC,
   ReactNode,
+  SetStateAction,
   useCallback,
   useContext,
   useEffect,
@@ -59,9 +61,9 @@ export const CalendarContext = createContext({
   }) => {
     /** empty **/
   },
-  setSelectedIntegrationId: (integrationId: string | null) => {
+  setSelectedIntegrationId: ((integrationId: string | null) => {
     /** empty **/
-  },
+  }) as Dispatch<SetStateAction<string | null>>,
   changeDate: (id: string, date: dayjs.Dayjs) => {
     /** empty **/
   },
