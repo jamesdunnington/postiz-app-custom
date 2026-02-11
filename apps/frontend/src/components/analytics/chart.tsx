@@ -19,13 +19,23 @@ export const Chart: FC<{
   const chart = useRef<null | DrawChart>(null);
   
   useEffect(() => {
-    const textColor = mode === 'dark' ? '#fff' : '#000';
+    // Use vibrant colors for better readability
+    const lineColor = mode === 'dark' ? '#06b6d4' : '#0891b2'; // Cyan shades
+    const pointColor = mode === 'dark' ? '#22d3ee' : '#0e7490'; // Complementary cyan
     
     const gradient = ref.current
       .getContext('2d')
       .createLinearGradient(0, 0, 0, ref.current.height);
-    gradient.addColorStop(0, 'rgba(114, 118, 137, 1)'); // Start color with some transparency
-    gradient.addColorStop(1, 'rgb(9, 11, 19, 1)');
+    
+    if (mode === 'dark') {
+      // Dark mode: darker gradient background
+      gradient.addColorStop(0, 'rgba(6, 182, 212, 0.3)'); // Cyan with transparency
+      gradient.addColorStop(1, 'rgba(9, 11, 19, 0.1)'); // Very dark with low transparency
+    } else {
+      // Light mode: lighter gradient background
+      gradient.addColorStop(0, 'rgba(8, 145, 178, 0.2)'); // Lighter cyan with transparency
+      gradient.addColorStop(1, 'rgba(255, 255, 255, 0.1)'); // Light with transparency
+    }
     chart.current = new DrawChart(ref.current!, {
       type: 'line',
       options: {
@@ -64,11 +74,14 @@ export const Chart: FC<{
         labels: list.map((row) => newDayjs(row.date).format('DD/MM/YYYY')),
         datasets: [
           {
-            borderColor: textColor,
-            pointBackgroundColor: textColor,
-            pointBorderColor: textColor,
-            pointHoverBackgroundColor: textColor,
-            pointHoverBorderColor: textColor,
+            borderColor: lineColor,
+            borderWidth: 2,
+            pointBackgroundColor: pointColor,
+            pointBorderColor: pointColor,
+            pointHoverBackgroundColor: lineColor,
+            pointHoverBorderColor: lineColor,
+            pointRadius: 4,
+            pointHoverRadius: 6,
             // @ts-ignore
             label: list?.[0]?.totalForks ? 'Forks by date' : 'Stars by date',
             backgroundColor: gradient,
