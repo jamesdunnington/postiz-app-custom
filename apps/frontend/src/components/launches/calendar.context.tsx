@@ -28,6 +28,7 @@ export const CalendarContext = createContext({
   startDate: newDayjs().startOf('isoWeek').format('YYYY-MM-DD'),
   endDate: newDayjs().endOf('isoWeek').format('YYYY-MM-DD'),
   customer: null as string | null,
+  selectedIntegrationId: null as string | null,
   sets: [] as { name: string; id: string; content: string[] }[],
   signature: undefined as any,
   comments: [] as Array<{
@@ -56,6 +57,9 @@ export const CalendarContext = createContext({
     display: 'week' | 'month' | 'day';
     customer: string | null;
   }) => {
+    /** empty **/
+  },
+  setSelectedIntegrationId: (integrationId: string | null) => {
     /** empty **/
   },
   changeDate: (id: string, date: dayjs.Dayjs) => {
@@ -120,6 +124,7 @@ export const CalendarWeekProvider: FC<{
   const fetch = useFetch();
   const [internalData, setInternalData] = useState([] as any[]);
   const [trendings] = useState<string[]>([]);
+  const [selectedIntegrationId, setSelectedIntegrationId] = useState<string | null>(null);
   const searchParams = useSearchParams();
   const [displaySaved, setDisplaySaved] = useCookie('calendar-display', 'week');
   const display = searchParams.get('display') || displaySaved;
@@ -244,19 +249,29 @@ export const CalendarWeekProvider: FC<{
     }
   }, [posts]);
 
+  // Filter posts by selected integration
+  const filteredPosts = useMemo(() => {
+    if (!selectedIntegrationId) {
+      return internalData;
+    }
+    return internalData.filter((post: any) => post.integrationId === selectedIntegrationId);
+  }, [internalData, selectedIntegrationId]);
+
   return (
     <CalendarContext.Provider
       value={{
         trendings,
         reloadCalendarView: swr.mutate,
         ...filters,
-        posts: isLoading ? [] : internalData,
+        posts: isLoading ? [] : filteredPosts,
         integrations,
         setFilters: setFiltersWrapper,
         changeDate,
         comments,
         sets: sets || [],
         signature: sign,
+        selectedIntegrationId,
+        setSelectedIntegrationId,
       }}
     >
       {children}

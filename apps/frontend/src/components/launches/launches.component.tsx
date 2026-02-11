@@ -4,7 +4,7 @@ import { AddProviderButton } from '@gitroom/frontend/components/launches/add.pro
 import { FC, useCallback, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { groupBy, orderBy } from 'lodash';
-import { CalendarWeekProvider } from '@gitroom/frontend/components/launches/calendar.context';
+import { CalendarWeekProvider, useCalendar } from '@gitroom/frontend/components/launches/calendar.context';
 import { Filters } from '@gitroom/frontend/components/launches/filters';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import useSWR from 'swr';
@@ -234,6 +234,14 @@ export const MenuComponent: FC<
     collapsed,
   } = props;
   const user = useUser();
+  const { selectedIntegrationId, setSelectedIntegrationId } = useCalendar();
+  const isSelected = selectedIntegrationId === integration.id;
+  
+  const handleIntegrationClick = useCallback(() => {
+    // Toggle selection: if already selected, deselect (set to null), otherwise select this integration
+    setSelectedIntegrationId(isSelected ? null : integration.id);
+  }, [integration.id, isSelected, setSelectedIntegrationId]);
+  
   const [collected, drag, dragPreview] = useDrag(() => ({
     type: 'menu',
     item: {
@@ -249,6 +257,9 @@ export const MenuComponent: FC<
         'data-tooltip-id': 'tooltip',
         'data-tooltip-content': 'Channel disconnected, click to reconnect.',
       })}
+      {...(!integration.refreshNeeded && {
+        onClick: handleIntegrationClick,
+      })}
       {...(collapsed
         ? {
             'data-tooltip-id': 'tooltip',
@@ -257,8 +268,9 @@ export const MenuComponent: FC<
         : {})}
       key={integration.id}
       className={clsx(
-        'flex gap-[12px] items-center bg-newBgColorInner hover:bg-boxHover group/profile transition-all rounded-e-[8px]',
-        integration.refreshNeeded && 'cursor-pointer'
+        'flex gap-[12px] items-center bg-newBgColorInner hover:bg-boxHover group/profile transition-all rounded-e-[8px] cursor-pointer',
+        integration.refreshNeeded && 'cursor-pointer',
+        isSelected && 'bg-fifth border-s-4 border-customColor11'
       )}
     >
       <div
