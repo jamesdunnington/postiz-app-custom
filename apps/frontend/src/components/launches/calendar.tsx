@@ -825,10 +825,20 @@ const CalendarItem: FC<{
     }),
     []
   );
+
+  // show localized publish date/time on hover (and provide native `title` fallback)
+  const publishLocal = dayjs.utc(post.publishDate).local();
+  const tooltipDateTime = newDayjs(publishLocal).format(
+    isUSCitizen() ? 'dddd, MMM D, YYYY h:mm A' : 'dddd, D MMM YYYY HH:mm'
+  );
+
   return (
     <div
       // @ts-ignore
       ref={dragRef}
+      data-tooltip-id="tooltip"
+      data-tooltip-content={tooltipDateTime}
+      title={tooltipDateTime}
       className={clsx('w-full flex h-full flex-1 flex-col group', 'relative')}
       style={{
         opacity,
