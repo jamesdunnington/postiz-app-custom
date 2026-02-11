@@ -695,7 +695,7 @@ export const CalendarColumn: FC<{
           )}
           {showAll && postList.length > 3 && (
             <div
-              className="text-center hover:underline py-[5px]"
+              className="text-center hover:underline py-[5px] text-textColor"
               onClick={showLessFunc}
             >
               {t('show_less', '- Show less')}

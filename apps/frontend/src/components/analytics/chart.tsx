@@ -8,13 +8,19 @@ import {
 } from '@gitroom/frontend/components/analytics/stars.and.forks.interface';
 import dayjs from 'dayjs';
 import { newDayjs } from '@gitroom/frontend/components/layout/set.timezone';
+import useCookie from 'react-use-cookie';
+
 export const Chart: FC<{
   list: StarsList[] | ForksList[];
 }> = (props) => {
   const { list } = props;
+  const [mode] = useCookie('mode', 'dark');
   const ref = useRef<any>(null);
   const chart = useRef<null | DrawChart>(null);
+  
   useEffect(() => {
+    const textColor = mode === 'dark' ? '#fff' : '#000';
+    
     const gradient = ref.current
       .getContext('2d')
       .createLinearGradient(0, 0, 0, ref.current.height);
@@ -37,9 +43,15 @@ export const Chart: FC<{
           y: {
             beginAtZero: true,
             display: false,
+            grid: {
+              color: mode === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+            },
           },
           x: {
             display: false,
+            grid: {
+              color: mode === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+            },
           },
         },
         plugins: {
@@ -52,7 +64,11 @@ export const Chart: FC<{
         labels: list.map((row) => newDayjs(row.date).format('DD/MM/YYYY')),
         datasets: [
           {
-            borderColor: '#fff',
+            borderColor: textColor,
+            pointBackgroundColor: textColor,
+            pointBorderColor: textColor,
+            pointHoverBackgroundColor: textColor,
+            pointHoverBorderColor: textColor,
             // @ts-ignore
             label: list?.[0]?.totalForks ? 'Forks by date' : 'Stars by date',
             backgroundColor: gradient,
@@ -66,6 +82,6 @@ export const Chart: FC<{
     return () => {
       chart?.current?.destroy();
     };
-  }, []);
+  }, [mode, list]);
   return <canvas className="w-full h-full" ref={ref} />;
 };
