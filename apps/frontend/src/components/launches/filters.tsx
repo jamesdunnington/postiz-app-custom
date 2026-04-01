@@ -229,73 +229,77 @@ export const Filters = () => {
     [setDay, setWeek, setMonth]
   );
 
-  const validateAllTimeSlots = useCallback(async () => {
+  const cleanCalendar = useCallback(async () => {
     if (isValidating) return;
 
     setIsValidating(true);
-    toast.show('Validating all scheduled posts...', 'warning');
 
     try {
-      const response = await fetch('/integrations/validate-all-timeslots', {
+      // Step 1: Validate Slots
+      toast.show('Step 1/3: Validating all scheduled posts...', 'warning');
+      const validateResponse = await fetch('/integrations/validate-all-timeslots', {
         method: 'POST',
       });
 
-      if (!response.ok) {
+      if (validateResponse.ok) {
+        const validateResult = await validateResponse.json();
+        if (validateResult.rescheduled > 0) {
+          toast.show(
+            `✓ Rescheduled ${validateResult.rescheduled} of ${validateResult.checked} posts to valid time slots`,
+            'success'
+          );
+        } else {
+          toast.show('✓ All posts are already at valid time slots', 'success');
+        }
+      } else {
         toast.show('Failed to validate time slots', 'warning');
-        setIsValidating(false);
-        return;
       }
 
-      const result = await response.json();
-
-      if (result.rescheduled > 0) {
-        toast.show(
-          `✓ Rescheduled ${result.rescheduled} of ${result.checked} posts to valid time slots`,
-          'success'
-        );
-        // Refresh calendar to show updated posts
-        calendar.reloadCalendarView();
-      } else {
-        toast.show('✓ All posts are already at valid time slots', 'success');
-      }
-    } catch (error) {
-      toast.show('Failed to validate time slots', 'warning');
-    } finally {
-      setIsValidating(false);
-    }
-  }, [fetch, toast, calendar, isValidating]);
-
-  const checkDuplicates = useCallback(async () => {
-    if (isValidating) return;
-
-    setIsValidating(true);
-    toast.show('Checking for duplicate schedules...', 'warning');
-
-    try {
-      const response = await fetch('/integrations/check-duplicates', {
+      // Step 2: Check Duplicates
+      toast.show('Step 2/3: Checking for duplicate schedules...', 'warning');
+      const dupResponse = await fetch('/integrations/check-duplicates', {
         method: 'POST',
       });
 
-      if (!response.ok) {
-        toast.show('Failed to check duplicates', 'warning');
-        setIsValidating(false);
-        return;
-      }
-
-      const result = await response.json();
-
-      if (result.rescheduled > 0) {
-        toast.show(
-          `✓ Rescheduled ${result.rescheduled} duplicate posts`,
-          'success'
-        );
-        // Refresh calendar to show updated posts
-        calendar.reloadCalendarView();
+      if (dupResponse.ok) {
+        const dupResult = await dupResponse.json();
+        if (dupResult.rescheduled > 0) {
+          toast.show(
+            `✓ Rescheduled ${dupResult.rescheduled} duplicate posts`,
+            'success'
+          );
+        } else {
+          toast.show('✓ No duplicate schedules found', 'success');
+        }
       } else {
-        toast.show('✓ No duplicate schedules found', 'success');
+        toast.show('Failed to check duplicates', 'warning');
       }
+
+      // Step 3: Clear Published Posts
+      toast.show('Step 3/3: Clearing published posts...', 'warning');
+      const clearResponse = await fetch('/integrations/clear-published', {
+        method: 'POST',
+      });
+
+      if (clearResponse.ok) {
+        const clearResult = await clearResponse.json();
+        if (clearResult.removed > 0) {
+          toast.show(
+            `✓ Removed ${clearResult.removed} published posts from calendar`,
+            'success'
+          );
+        } else {
+          toast.show('✓ No published posts to clear', 'success');
+        }
+      } else {
+        toast.show('Failed to clear published posts', 'warning');
+      }
+
+      // Refresh calendar after all operations
+      calendar.reloadCalendarView();
+      toast.show('✓ Calendar cleanup complete', 'success');
     } catch (error) {
-      toast.show('Failed to check duplicates', 'warning');
+      toast.show('Failed to clean calendar', 'warning');
     } finally {
       setIsValidating(false);
     }
@@ -360,35 +364,12 @@ export const Filters = () => {
               Today
             </div>
             <div
-              onClick={validateAllTimeSlots}
+              onClick={cleanCalendar}
               className={clsx(
                 'hover:text-textItemFocused hover:bg-boxFocused py-[3px] px-[9px] flex justify-center items-center gap-[6px] rounded-[8px] transition-all text-[14px] bg-newBgColorInner border border-newTableBorder',
                 isValidating ? 'cursor-wait opacity-60' : 'cursor-pointer'
               )}
-              title="Reschedule any posts that are not at configured time slots"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                viewBox="0 0 32 32"
-                fill="none"
-                className={clsx(isValidating && 'animate-spin')}
-              >
-                <path
-                  d="M16 2C8.28 2 2 8.28 2 16C2 23.72 8.28 30 16 30C23.72 30 30 23.72 30 16C30 8.28 23.72 2 16 2ZM16 28C9.38 28 4 22.62 4 16C4 9.38 9.38 4 16 4C22.62 4 28 9.38 28 16C28 22.62 22.62 28 16 28ZM22.3 10.3L14 18.6L9.7 14.3C9.3 13.9 8.7 13.9 8.3 14.3C7.9 14.7 7.9 15.3 8.3 15.7L13.3 20.7C13.5 20.9 13.7 21 14 21C14.3 21 14.5 20.9 14.7 20.7L23.7 11.7C24.1 11.3 24.1 10.7 23.7 10.3C23.3 9.9 22.7 9.9 22.3 10.3Z"
-                  fill="currentColor"
-                />
-              </svg>
-              {isValidating ? 'Validating...' : 'Validate Slots'}
-            </div>
-            <div
-              onClick={checkDuplicates}
-              className={clsx(
-                'hover:text-textItemFocused hover:bg-boxFocused py-[3px] px-[9px] flex justify-center items-center gap-[6px] rounded-[8px] transition-all text-[14px] bg-newBgColorInner border border-newTableBorder',
-                isValidating ? 'cursor-wait opacity-60' : 'cursor-pointer'
-              )}
-              title="Find and reschedule duplicate posts scheduled at the same time"
+              title="Validate slots, check duplicates, and clear published posts"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -403,7 +384,7 @@ export const Filters = () => {
                   fill="currentColor"
                 />
               </svg>
-              {isValidating ? 'Checking...' : 'Check Duplicates'}
+              {isValidating ? 'Cleaning...' : 'Clean Calendar'}
             </div>
           </div>
         </div>

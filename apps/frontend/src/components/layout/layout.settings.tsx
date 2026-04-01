@@ -42,6 +42,7 @@ import { useSearchParams } from 'next/navigation';
 import { CheckPayment } from '@gitroom/frontend/components/layout/check.payment';
 import { ChromeExtensionComponent } from '@gitroom/frontend/components/layout/chrome.extension.component';
 import { LanguageComponent } from '@gitroom/frontend/components/layout/language.component';
+import QueueHealthComponent from '@gitroom/frontend/components/layout/queue.health.component';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import i18next from '@gitroom/react/translation/i18next';
 import { MediaSettingsLayout } from '@gitroom/frontend/components/launches/helpers/media.settings.component';
@@ -151,6 +152,7 @@ export const LayoutSettings = ({ children }: { children: ReactNode }) => {
                 <SettingsComponent />
                 <NotificationComponent />
                 <OrganizationSelector />
+                <QueueHealthComponent />
               </div>
             </nav>
             <div className="flex-1 flex">

@@ -1344,6 +1344,36 @@ export class IntegrationService {
     }
   }
 
+  async clearPublishedPosts(orgId: string) {
+    const { logger } = Sentry;
+    console.log('[CLEAR PUBLISHED] Starting removal of published posts...');
+
+    try {
+      const result = await this._postsRepository.removePublishedPosts(orgId);
+
+      console.log(
+        `[CLEAR PUBLISHED] ✅ Complete: Removed ${result.removed} published posts`
+      );
+      logger.info(
+        `Clear published posts complete: Removed ${result.removed} posts`
+      );
+
+      return { removed: result.removed };
+    } catch (err) {
+      Sentry.captureException(err, {
+        extra: {
+          context: 'Failed to clear published posts',
+          orgId,
+        },
+      });
+      logger.error(
+        `Error clearing published posts: ${err instanceof Error ? err.message : String(err)}`
+      );
+      console.error('[CLEAR PUBLISHED] ❌ Error:', err);
+      return { removed: 0 };
+    }
+  }
+
   async checkIntegrationConnection(orgId: string, integrationId: string) {
     const { logger } = Sentry;
     

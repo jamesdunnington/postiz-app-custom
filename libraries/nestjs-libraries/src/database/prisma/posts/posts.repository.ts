@@ -249,6 +249,36 @@ export class PostsRepository {
     });
   }
 
+  async removePublishedPosts(orgId: string) {
+    const published = await this._post.model.post.findMany({
+      where: {
+        organizationId: orgId,
+        state: 'PUBLISHED',
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (published.length === 0) {
+      return { removed: 0 };
+    }
+
+    await this._post.model.post.updateMany({
+      where: {
+        organizationId: orgId,
+        state: 'PUBLISHED',
+        deletedAt: null,
+      },
+      data: {
+        deletedAt: new Date(),
+      },
+    });
+
+    return { removed: published.length };
+  }
+
   getPost(
     id: string,
     includeIntegration = false,

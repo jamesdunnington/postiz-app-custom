@@ -687,4 +687,17 @@ export class IntegrationsController {
           : 'No duplicate schedules found',
     };
   }
+
+  @Post('/clear-published')
+  async clearPublished(@GetOrgFromRequest() org: Organization) {
+    const result = await this._integrationService.clearPublishedPosts(org.id);
+    return {
+      success: true,
+      removed: result.removed,
+      message:
+        result.removed > 0
+          ? `Removed ${result.removed} published posts from calendar`
+          : 'No published posts found',
+    };
+  }
 }
