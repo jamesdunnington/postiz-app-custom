@@ -320,7 +320,7 @@ export const MediaBox: FC<{
     if (data?.pages) {
       setPages(data.pages);
     }
-    if (data?.results && data?.results?.length) {
+    if (data?.results) {
       setListMedia([...data.results]);
     }
   }, [data]);
@@ -369,6 +369,7 @@ export const MediaBox: FC<{
                   onClick={closeModal}
                   className="outline-none z-[300] absolute end-[20px] top-[15px] mantine-UnstyledButton-root mantine-ActionIcon-root bg-primary hover:bg-tableBorder cursor-pointer mantine-Modal-close mantine-1dcetaa"
                   type="button"
+                  aria-label="Close"
                 >
                   <svg
                     viewBox="0 0 15 15"
@@ -741,6 +742,7 @@ export const MultiMediaComponent: FC<{
                         <img
                           className="w-full h-full object-cover rounded-[4px]"
                           src={mediaDirectory.set(media?.path)}
+                          alt="media"
                         />
                       )}
                     </div>
@@ -884,6 +886,7 @@ export const MediaComponent: FC<{
           <img
             className="w-full h-full object-cover"
             src={currentMedia.path}
+            alt="media"
             onClick={() => window.open(mediaDirectory.set(currentMedia.path))}
           />
         </div>

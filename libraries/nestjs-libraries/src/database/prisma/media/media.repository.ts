@@ -73,9 +73,8 @@ export class MediaRepository {
     const pageNum = (page || 1) - 1;
     const query = {
       where: {
-        organization: {
-          id: org,
-        },
+        organizationId: org,
+        deletedAt: null,
       },
     };
     const pages =
