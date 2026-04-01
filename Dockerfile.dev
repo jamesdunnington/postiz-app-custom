@@ -22,7 +22,7 @@ COPY apps/frontend/package.json ./apps/frontend/
 COPY apps/sdk/package.json ./apps/sdk/
 COPY apps/workers/package.json ./apps/workers/
 
-RUN pnpm install --frozen-lockfile
+RUN pnpm install
 
 # Now copy source code and config
 COPY . /app
