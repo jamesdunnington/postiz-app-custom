@@ -33,11 +33,11 @@ export class CleanupOrphanedMediaStartup implements OnModuleInit {
       // Step 2: Validate remaining active media — check if files still exist
       const activeMedia = await this._mediaService.getAllActiveMedia();
       console.log(
-        `[MEDIA CLEANUP] Validating ${activeMedia.length} active media records (20 concurrent)...`
+        `[MEDIA CLEANUP] Validating ${activeMedia.length} active media records (50 concurrent)...`
       );
 
       const orphanedIds: string[] = [];
-      const BATCH_SIZE = 20;
+      const BATCH_SIZE = 50;
 
       for (let i = 0; i < activeMedia.length; i += BATCH_SIZE) {
         const batch = activeMedia.slice(i, i + BATCH_SIZE);
@@ -45,7 +45,7 @@ export class CleanupOrphanedMediaStartup implements OnModuleInit {
           batch.map(async (media) => {
             try {
               const controller = new AbortController();
-              const timeout = setTimeout(() => controller.abort(), 5000);
+              const timeout = setTimeout(() => controller.abort(), 3000);
               const response = await fetch(media.path, {
                 method: 'HEAD',
                 signal: controller.signal,
@@ -65,10 +65,15 @@ export class CleanupOrphanedMediaStartup implements OnModuleInit {
           }
         }
 
-        if ((i + BATCH_SIZE) % 500 === 0 || i + BATCH_SIZE >= activeMedia.length) {
+        if ((i + BATCH_SIZE) % 1000 === 0 || i + BATCH_SIZE >= activeMedia.length) {
           console.log(
             `[MEDIA CLEANUP] Progress: ${Math.min(i + BATCH_SIZE, activeMedia.length)}/${activeMedia.length} checked, ${orphanedIds.length} orphaned so far`
           );
+        }
+
+        // Batch delete orphaned records every 500 to avoid holding too many IDs in memory
+        if (orphanedIds.length >= 500) {
+          await this._mediaService.softDeleteMediaByIds(orphanedIds.splice(0));
         }
       }
 
