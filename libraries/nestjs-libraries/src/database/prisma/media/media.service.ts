@@ -60,6 +60,18 @@ export class MediaService {
     return this._mediaRepository.getMedia(org, page);
   }
 
+  purgeDeletedMedia() {
+    return this._mediaRepository.purgeDeletedMedia();
+  }
+
+  getAllActiveMedia() {
+    return this._mediaRepository.getAllActiveMedia();
+  }
+
+  softDeleteMediaByIds(ids: string[]) {
+    return this._mediaRepository.softDeleteMediaByIds(ids);
+  }
+
   saveMediaInformation(org: string, data: SaveMediaInformationDto) {
     return this._mediaRepository.saveMediaInformation(org, data);
   }

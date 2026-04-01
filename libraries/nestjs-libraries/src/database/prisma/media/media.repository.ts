@@ -6,6 +6,47 @@ import { SaveMediaInformationDto } from '@gitroom/nestjs-libraries/dtos/media/sa
 export class MediaRepository {
   constructor(private _media: PrismaRepository<'media'>) {}
 
+  /**
+   * Hard-delete all soft-deleted media records (where deletedAt is set)
+   */
+  async purgeDeletedMedia() {
+    return this._media.model.media.deleteMany({
+      where: {
+        deletedAt: { not: null },
+      },
+    });
+  }
+
+  /**
+   * Get all active (non-deleted) media records for validation
+   */
+  async getAllActiveMedia() {
+    return this._media.model.media.findMany({
+      where: {
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        path: true,
+        organizationId: true,
+      },
+    });
+  }
+
+  /**
+   * Soft-delete media records by IDs (for orphaned files)
+   */
+  async softDeleteMediaByIds(ids: string[]) {
+    return this._media.model.media.updateMany({
+      where: {
+        id: { in: ids },
+      },
+      data: {
+        deletedAt: new Date(),
+      },
+    });
+  }
+
   saveFile(org: string, fileName: string, filePath: string) {
     return this._media.model.media.create({
       data: {
