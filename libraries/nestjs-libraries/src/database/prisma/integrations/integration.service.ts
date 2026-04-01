@@ -23,6 +23,7 @@ import { difference, uniq } from 'lodash';
 import utc from 'dayjs/plugin/utc';
 import { AutopostRepository } from '@gitroom/nestjs-libraries/database/prisma/autopost/autopost.repository';
 import { PostsRepository } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.repository';
+import { MediaRepository } from '@gitroom/nestjs-libraries/database/prisma/media/media.repository';
 import * as Sentry from '@sentry/nestjs';
 
 dayjs.extend(utc);
@@ -34,6 +35,7 @@ export class IntegrationService {
     private _integrationRepository: IntegrationRepository,
     private _autopostsRepository: AutopostRepository,
     private _postsRepository: PostsRepository,
+    private _mediaRepository: MediaRepository,
     private _integrationManager: IntegrationManager,
     private _notificationService: NotificationService,
     private _workerServiceProducer: BullMqClient
@@ -1358,15 +1360,33 @@ export class IntegrationService {
           await this.storage.removeFile(path);
           imagesDeleted++;
         } catch (err) {
-          console.error(`[CLEAR PUBLISHED] Failed to delete image: ${path}`, err);
+          console.error(`[CLEAR PUBLISHED] Failed to delete image from storage: ${path}`, err);
+        }
+      }
+
+      // Soft-delete matching Media records by path
+      let mediaRecordsDeleted = 0;
+      if (result.imagePaths.length > 0) {
+        try {
+          const allMedia = await this._mediaRepository.getAllActiveMedia();
+          const pathSet = new Set(result.imagePaths);
+          const mediaIdsToDelete = allMedia
+            .filter((m) => pathSet.has(m.path))
+            .map((m) => m.id);
+          if (mediaIdsToDelete.length > 0) {
+            await this._mediaRepository.softDeleteMediaByIds(mediaIdsToDelete);
+            mediaRecordsDeleted = mediaIdsToDelete.length;
+          }
+        } catch (err) {
+          console.error('[CLEAR PUBLISHED] Failed to clean Media records:', err);
         }
       }
 
       console.log(
-        `[CLEAR PUBLISHED] ✅ Complete: Removed ${result.removed} published posts, deleted ${imagesDeleted} images from storage`
+        `[CLEAR PUBLISHED] ✅ Complete: Removed ${result.removed} published posts, deleted ${imagesDeleted} images from storage, cleaned ${mediaRecordsDeleted} media records`
       );
       logger.info(
-        `Clear published posts complete: Removed ${result.removed} posts, deleted ${imagesDeleted} images`
+        `Clear published posts complete: Removed ${result.removed} posts, deleted ${imagesDeleted} images, cleaned ${mediaRecordsDeleted} media records`
       );
 
       return { removed: result.removed, imagesDeleted };
