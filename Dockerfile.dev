@@ -12,10 +12,22 @@ RUN npm --no-update-notifier --no-fund --global install pnpm@10.6.1 pm2
 
 WORKDIR /app
 
+# Copy dependency manifests first for better layer caching
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/backend/package.json ./apps/backend/
+COPY apps/commands/package.json ./apps/commands/
+COPY apps/cron/package.json ./apps/cron/
+COPY apps/extension/package.json ./apps/extension/
+COPY apps/frontend/package.json ./apps/frontend/
+COPY apps/sdk/package.json ./apps/sdk/
+COPY apps/workers/package.json ./apps/workers/
+
+RUN pnpm install --frozen-lockfile
+
+# Now copy source code and config
 COPY . /app
 COPY var/docker/nginx.conf /etc/nginx/nginx.conf
 
-RUN pnpm install
 RUN NODE_OPTIONS="--max-old-space-size=4096" pnpm run build
 
 CMD ["sh", "-c", "nginx && pnpm run pm2"]
