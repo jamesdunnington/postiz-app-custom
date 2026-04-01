@@ -39,6 +39,7 @@ import { BillingAfter } from '@gitroom/frontend/components/new-layout/billing.af
 import { OrganizationSelector } from '@gitroom/frontend/components/layout/organization.selector';
 import { PreConditionComponent } from '@gitroom/frontend/components/layout/pre-condition.component';
  import { AttachToFeedbackIcon } from '@gitroom/frontend/components/new-layout/sentry.feedback.component';
+import QueueHealthComponent from '@gitroom/frontend/components/layout/queue.health.component';
 
 const jakartaSans = Plus_Jakarta_Sans({
   weight: ['600', '500'],
@@ -122,6 +123,7 @@ export const LayoutComponent = ({ children }: { children: ReactNode }) => {
                       <div className="w-[1px] h-[20px] bg-blockSeparator" />
                       <AttachToFeedbackIcon />
                       <NotificationComponent />
+                      <QueueHealthComponent />
                     </div>
                   </div>
                   <div className="flex flex-1 gap-[1px] overflow-y-auto">{children}</div>
