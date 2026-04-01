@@ -258,11 +258,29 @@ export class PostsRepository {
       },
       select: {
         id: true,
+        image: true,
       },
     });
 
     if (published.length === 0) {
-      return { removed: 0 };
+      return { removed: 0, imagePaths: [] as string[] };
+    }
+
+    // Collect all image paths from published posts
+    const imagePaths: string[] = [];
+    for (const post of published) {
+      if (post.image) {
+        try {
+          const images = JSON.parse(post.image);
+          if (Array.isArray(images)) {
+            for (const img of images) {
+              if (img.path) imagePaths.push(img.path);
+            }
+          }
+        } catch {
+          // skip malformed image JSON
+        }
+      }
     }
 
     await this._post.model.post.updateMany({
@@ -276,7 +294,7 @@ export class PostsRepository {
       },
     });
 
-    return { removed: published.length };
+    return { removed: published.length, imagePaths };
   }
 
   getPost(

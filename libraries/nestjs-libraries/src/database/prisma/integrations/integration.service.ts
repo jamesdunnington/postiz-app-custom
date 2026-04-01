@@ -1351,14 +1351,25 @@ export class IntegrationService {
     try {
       const result = await this._postsRepository.removePublishedPosts(orgId);
 
+      // Delete images from storage
+      let imagesDeleted = 0;
+      for (const path of result.imagePaths) {
+        try {
+          await this.storage.removeFile(path);
+          imagesDeleted++;
+        } catch (err) {
+          console.error(`[CLEAR PUBLISHED] Failed to delete image: ${path}`, err);
+        }
+      }
+
       console.log(
-        `[CLEAR PUBLISHED] ✅ Complete: Removed ${result.removed} published posts`
+        `[CLEAR PUBLISHED] ✅ Complete: Removed ${result.removed} published posts, deleted ${imagesDeleted} images from storage`
       );
       logger.info(
-        `Clear published posts complete: Removed ${result.removed} posts`
+        `Clear published posts complete: Removed ${result.removed} posts, deleted ${imagesDeleted} images`
       );
 
-      return { removed: result.removed };
+      return { removed: result.removed, imagesDeleted };
     } catch (err) {
       Sentry.captureException(err, {
         extra: {
@@ -1370,7 +1381,7 @@ export class IntegrationService {
         `Error clearing published posts: ${err instanceof Error ? err.message : String(err)}`
       );
       console.error('[CLEAR PUBLISHED] ❌ Error:', err);
-      return { removed: 0 };
+      return { removed: 0, imagesDeleted: 0 };
     }
   }
 

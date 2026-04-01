@@ -694,9 +694,10 @@ export class IntegrationsController {
     return {
       success: true,
       removed: result.removed,
+      imagesDeleted: result.imagesDeleted,
       message:
         result.removed > 0
-          ? `Removed ${result.removed} published posts from calendar`
+          ? `Removed ${result.removed} published posts and ${result.imagesDeleted} images`
           : 'No published posts found',
     };
   }

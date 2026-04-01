@@ -285,7 +285,7 @@ export const Filters = () => {
         const clearResult = await clearResponse.json();
         if (clearResult.removed > 0) {
           toast.show(
-            `✓ Removed ${clearResult.removed} published posts from calendar`,
+            `✓ Removed ${clearResult.removed} published posts and ${clearResult.imagesDeleted} images`,
             'success'
           );
         } else {
