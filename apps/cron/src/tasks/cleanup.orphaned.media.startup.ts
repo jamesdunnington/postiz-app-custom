@@ -33,20 +33,42 @@ export class CleanupOrphanedMediaStartup implements OnModuleInit {
       // Step 2: Validate remaining active media — check if files still exist
       const activeMedia = await this._mediaService.getAllActiveMedia();
       console.log(
-        `[MEDIA CLEANUP] Validating ${activeMedia.length} active media records...`
+        `[MEDIA CLEANUP] Validating ${activeMedia.length} active media records (20 concurrent)...`
       );
 
       const orphanedIds: string[] = [];
+      const BATCH_SIZE = 20;
 
-      for (const media of activeMedia) {
-        try {
-          const response = await fetch(media.path, { method: 'HEAD' });
-          if (!response.ok) {
-            orphanedIds.push(media.id);
+      for (let i = 0; i < activeMedia.length; i += BATCH_SIZE) {
+        const batch = activeMedia.slice(i, i + BATCH_SIZE);
+        const results = await Promise.allSettled(
+          batch.map(async (media) => {
+            try {
+              const controller = new AbortController();
+              const timeout = setTimeout(() => controller.abort(), 5000);
+              const response = await fetch(media.path, {
+                method: 'HEAD',
+                signal: controller.signal,
+              });
+              clearTimeout(timeout);
+              if (!response.ok) return media.id;
+              return null;
+            } catch {
+              return media.id;
+            }
+          })
+        );
+
+        for (const result of results) {
+          if (result.status === 'fulfilled' && result.value) {
+            orphanedIds.push(result.value);
           }
-        } catch {
-          // File is unreachable — mark as orphaned
-          orphanedIds.push(media.id);
+        }
+
+        if ((i + BATCH_SIZE) % 500 === 0 || i + BATCH_SIZE >= activeMedia.length) {
+          console.log(
+            `[MEDIA CLEANUP] Progress: ${Math.min(i + BATCH_SIZE, activeMedia.length)}/${activeMedia.length} checked, ${orphanedIds.length} orphaned so far`
+          );
         }
       }
 
