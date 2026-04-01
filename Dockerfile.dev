@@ -22,6 +22,9 @@ COPY apps/frontend/package.json ./apps/frontend/
 COPY apps/sdk/package.json ./apps/sdk/
 COPY apps/workers/package.json ./apps/workers/
 
+# Prisma schema needed by postinstall (prisma-generate)
+COPY libraries/nestjs-libraries/src/database/prisma/schema.prisma ./libraries/nestjs-libraries/src/database/prisma/schema.prisma
+
 RUN pnpm install
 
 # Now copy source code and config
