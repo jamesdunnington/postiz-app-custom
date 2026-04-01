@@ -49,14 +49,39 @@ export const Pagination: FC<{
   const t = useT();
 
   const { current, totalPages, setPage } = props;
-  const totalPagesList = useMemo(() => {
-    return Array.from(
-      {
-        length: totalPages,
-      },
-      (_, i) => i
-    );
-  }, [totalPages]);
+  const visiblePages = useMemo(() => {
+    const maxVisible = 20;
+    if (totalPages <= maxVisible) {
+      return Array.from({ length: totalPages }, (_, i) => i);
+    }
+
+    const half = Math.floor(maxVisible / 2);
+    let start = Math.max(0, current - half);
+    let end = start + maxVisible;
+
+    if (end > totalPages) {
+      end = totalPages;
+      start = Math.max(0, end - maxVisible);
+    }
+
+    const pages: (number | 'ellipsis-start' | 'ellipsis-end')[] = [];
+
+    if (start > 0) {
+      pages.push(0);
+      if (start > 1) pages.push('ellipsis-start');
+    }
+
+    for (let i = start; i < end; i++) {
+      if (!pages.includes(i)) pages.push(i);
+    }
+
+    if (end < totalPages) {
+      if (end < totalPages - 1) pages.push('ellipsis-end');
+      pages.push(totalPages - 1);
+    }
+
+    return pages;
+  }, [totalPages, current]);
   return (
     <ul className="flex flex-row items-center gap-1 justify-center mt-[15px]">
       <li className={clsx(current === 0 && 'opacity-20 pointer-events-none')}>
@@ -82,7 +107,12 @@ export const Pagination: FC<{
           <span>{t('previous', 'Previous')}</span>
         </div>
       </li>
-      {totalPagesList.map((page) => (
+      {visiblePages.map((page) =>
+        typeof page === 'string' ? (
+          <li key={page} className="px-1 text-textColor">
+            &hellip;
+          </li>
+        ) : (
         <li key={page} className="">
           <div
             aria-current="page"
@@ -97,7 +127,8 @@ export const Pagination: FC<{
             {page + 1}
           </div>
         </li>
-      ))}
+        )
+      )}
       <li
         className={clsx(
           current + 1 === totalPages && 'opacity-20 pointer-events-none'
