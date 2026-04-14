@@ -44,6 +44,7 @@ export interface AnalyticsData {
   label: string;
   data: Array<{ total: string; date: string; tentative?: boolean }>;
   percentageChange: number;
+  average?: boolean;
 }
 
 export type GenerateAuthUrlResponse = {

@@ -87,6 +87,7 @@
 
 - Schedule all your social media posts (many AI features)
 - Measure your work with analytics.
+- **Pinterest Save Rate & Outbound Click analytics** — track key Pinterest performance metrics directly in your dashboard.
 - Collaborate with other team members to exchange or buy posts.
 - Invite your team members to collaborate, comment, and schedule posts.
 - At the moment there is no difference between the hosted version to the self-hosted version
