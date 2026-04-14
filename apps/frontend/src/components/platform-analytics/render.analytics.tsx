@@ -121,7 +121,8 @@ export const RenderAnalytics: FC<{
         {/* Metrics Grid */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           {data?.map((metric: any, index: number) => {
-            const totalValue = parseFloat(total[index]?.toString().replace(/,/g, '') || '0');
+            const isAverage = metric.average;
+            const totalValue = parseFloat(total[index]?.toString().replace(/,/g, '').replace(/%/g, '') || '0');
             const percentageChange = metric.percentageChange || 0;
             const isPositive = percentageChange >= 0;
             
@@ -143,7 +144,7 @@ export const RenderAnalytics: FC<{
                 </div>
                 
                 {/* Value */}
-                <div className="text-3xl font-bold mb-2">{formatNumber(totalValue)}</div>
+                <div className="text-3xl font-bold mb-2">{isAverage ? totalValue.toFixed(2) + '%' : formatNumber(totalValue)}</div>
                 
                 {/* Percentage Change */}
                 <div className={`flex items-center gap-1 text-sm font-medium ${
@@ -227,7 +228,8 @@ export const RenderAnalytics: FC<{
             const metric = data?.[metricIndex];
             if (!metric) return null;
             
-            const totalValue = parseFloat(total[metricIndex]?.toString().replace(/,/g, '') || '0');
+            const isAverage = metric.average;
+            const totalValue = parseFloat(total[metricIndex]?.toString().replace(/,/g, '').replace(/%/g, '') || '0');
             
             return (
               <div
@@ -237,7 +239,7 @@ export const RenderAnalytics: FC<{
                 <div className="mb-4">
                   <h3 className="text-lg font-semibold mb-1">{metric.label}</h3>
                   <div className="text-3xl font-bold text-purple-400">
-                    {formatNumber(totalValue)}
+                    {isAverage ? totalValue.toFixed(2) + '%' : formatNumber(totalValue)}
                   </div>
                 </div>
                 
