@@ -4,6 +4,7 @@ import useSWR from 'swr';
 import { useCallback, useMemo, useState } from 'react';
 import { capitalize, orderBy } from 'lodash';
 import clsx from 'clsx';
+import dayjs from 'dayjs';
 import ImageWithFallback from '@gitroom/react/helpers/image.with.fallback';
 import Image from 'next/image';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
@@ -38,6 +39,12 @@ export const PlatformAnalytics = () => {
   const [key, setKey] = useState(30);
   const [refresh, setRefresh] = useState(false);
   const [collapseMenu, setCollapseMenu] = useCookie('collapseMenu', '0');
+  const [customStartDate, setCustomStartDate] = useState(
+    dayjs().subtract(14, 'day').format('YYYY-MM-DD')
+  );
+  const [customEndDate, setCustomEndDate] = useState(
+    dayjs().format('YYYY-MM-DD')
+  );
   const toaster = useToaster();
   const load = useCallback(async () => {
     const int = (
@@ -104,6 +111,23 @@ export const PlatformAnalytics = () => {
       ].indexOf(currentIntegration.identifier) !== -1
     ) {
       arr.push({
+        key: 28,
+        value: t('28_days', '28 Days'),
+      });
+    }
+    if (
+      [
+        'facebook',
+        'instagram',
+        'instagram-standalone',
+        'linkedin-page',
+        'pinterest',
+        'youtube',
+        'threads',
+        'x',
+      ].indexOf(currentIntegration.identifier) !== -1
+    ) {
+      arr.push({
         key: 30,
         value: t('30_days', '30 Days'),
       });
@@ -118,11 +142,18 @@ export const PlatformAnalytics = () => {
         value: t('90_days', '90 Days'),
       });
     }
+    arr.push({
+      key: -1,
+      value: t('custom_range', 'Custom Range'),
+    });
     return arr;
   }, [currentIntegration]);
   const keys = useMemo(() => {
     if (!currentIntegration) {
       return 7;
+    }
+    if (key === -1) {
+      return -1;
     }
     if (options.find((p) => p.key === key)) {
       return key;
@@ -270,25 +301,56 @@ export const PlatformAnalytics = () => {
       <div className="bg-newBgColorInner flex-1 flex-col flex p-[20px] gap-[12px]">
         {!!options.length && (
           <div className="flex-1 flex flex-col gap-[14px]">
-            <div className="max-w-[200px]">
-              <Select
-                label=""
-                name="date"
-                disableForm={true}
-                hideErrors={true}
-                onChange={(e) => setKey(+e.target.value)}
-              >
-                {options.map((option) => (
-                  <option key={option.key} value={option.key}>
-                    {option.value}
-                  </option>
-                ))}
-              </Select>
+            <div className="flex items-center gap-[12px] flex-wrap">
+              <div className="w-[200px]">
+                <Select
+                  label=""
+                  name="date"
+                  disableForm={true}
+                  hideErrors={true}
+                  onChange={(e) => setKey(+e.target.value)}
+                >
+                  {options.map((option) => (
+                    <option key={option.key} value={option.key}>
+                      {option.value}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              {keys === -1 && (
+                <div className="flex items-center gap-[8px]">
+                  <input
+                    type="date"
+                    value={customStartDate}
+                    max={customEndDate}
+                    onChange={(e) => setCustomStartDate(e.target.value)}
+                    aria-label="Start date"
+                    className="bg-input border border-customColor6 rounded-md px-3 py-[7px] text-sm text-inputText"
+                  />
+                  <span className="text-sm text-gray-400">{t('to', 'to')}</span>
+                  <input
+                    type="date"
+                    value={customEndDate}
+                    min={customStartDate}
+                    max={dayjs().format('YYYY-MM-DD')}
+                    onChange={(e) => setCustomEndDate(e.target.value)}
+                    aria-label="End date"
+                    className="bg-input border border-customColor6 rounded-md px-3 py-[7px] text-sm text-inputText"
+                  />
+                </div>
+              )}
             </div>
             <div className="flex-1">
-              {!!keys && !!currentIntegration && !refresh && (
-                <RenderAnalytics integration={currentIntegration} date={keys} />
-              )}
+              {!!currentIntegration && !refresh && (keys !== -1 ? (
+                !!keys && <RenderAnalytics integration={currentIntegration} date={keys} />
+              ) : (
+                <RenderAnalytics
+                  integration={currentIntegration}
+                  date={-1}
+                  customStartDate={customStartDate}
+                  customEndDate={customEndDate}
+                />
+              ))}
             </div>
           </div>
         )}

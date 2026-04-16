@@ -52,12 +52,38 @@ export class AnalyticsController {
     };
   }
 
+  @Get('/:integration/pinterest-tops')
+  async getPinterestTops(
+    @GetOrgFromRequest() org: Organization,
+    @Param('integration') integration: string,
+    @Query('date') date: string,
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string
+  ) {
+    return this._integrationService.getPinterestTops(
+      org,
+      integration,
+      date,
+      startDate,
+      endDate
+    );
+  }
+
   @Get('/:integration')
   async getIntegration(
     @GetOrgFromRequest() org: Organization,
     @Param('integration') integration: string,
-    @Query('date') date: string
+    @Query('date') date: string,
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string
   ) {
-    return this._integrationService.checkAnalytics(org, integration, date);
+    return this._integrationService.checkAnalytics(
+      org,
+      integration,
+      date,
+      false,
+      startDate,
+      endDate
+    );
   }
 }

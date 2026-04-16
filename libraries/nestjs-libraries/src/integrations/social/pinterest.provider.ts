@@ -505,4 +505,200 @@ export class PinterestProvider
       ]
     );
   }
+
+  private parseAnalyticsMetrics(daily_metrics: any[]): AnalyticsData[] {
+    const today = dayjs().format('YYYY-MM-DD');
+    const yesterday = dayjs().subtract(1, 'day').format('YYYY-MM-DD');
+
+    return daily_metrics.reduce(
+      (acc: any, item: any) => {
+        const isTentative = item.date === today || item.date === yesterday;
+
+        if (typeof item.metrics.SAVE_RATE !== 'undefined') {
+          acc[0].data.push({
+            date: item.date,
+            total: (item.metrics.SAVE_RATE * 100).toFixed(2),
+            tentative: isTentative,
+          });
+        }
+        if (typeof item.metrics.OUTBOUND_CLICK !== 'undefined') {
+          acc[1].data.push({ date: item.date, total: item.metrics.OUTBOUND_CLICK, tentative: isTentative });
+        }
+        if (typeof item.metrics.IMPRESSION !== 'undefined') {
+          acc[2].data.push({ date: item.date, total: item.metrics.IMPRESSION, tentative: isTentative });
+        }
+        if (typeof item.metrics.PIN_CLICK !== 'undefined') {
+          acc[3].data.push({ date: item.date, total: item.metrics.PIN_CLICK, tentative: isTentative });
+        }
+        if (typeof item.metrics.ENGAGEMENT !== 'undefined') {
+          acc[4].data.push({ date: item.date, total: item.metrics.ENGAGEMENT, tentative: isTentative });
+        }
+        if (typeof item.metrics.SAVE !== 'undefined') {
+          acc[5].data.push({ date: item.date, total: item.metrics.SAVE, tentative: isTentative });
+        }
+
+        return acc;
+      },
+      [
+        { label: 'Save Rate', average: true, data: [] as any[] },
+        { label: 'Outbound Clicks', data: [] as any[] },
+        { label: 'Impressions', data: [] as any[] },
+        { label: 'Pin Clicks', data: [] as any[] },
+        { label: 'Engagement', data: [] as any[] },
+        { label: 'Saves', data: [] as any[] },
+      ]
+    );
+  }
+
+  async analyticsCustomRange(
+    id: string,
+    accessToken: string,
+    startDate: string,
+    endDate: string
+  ): Promise<AnalyticsData[]> {
+    const {
+      all: { daily_metrics },
+    } = await (
+      await fetch(
+        `https://api.pinterest.com/v5/user_account/analytics?start_date=${startDate}&end_date=${endDate}`,
+        {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      )
+    ).json();
+
+    return this.parseAnalyticsMetrics(daily_metrics);
+  }
+
+  async getTopBoardsAndPins(
+    id: string,
+    accessToken: string,
+    date: number,
+    startDate?: string,
+    endDate?: string
+  ): Promise<{ topBoards: any[]; topPins: any[] }> {
+    const headers = {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    };
+
+    const since =
+      date === -1 && startDate
+        ? startDate
+        : dayjs().subtract(date, 'day').format('YYYY-MM-DD');
+    const until =
+      date === -1 && endDate ? endDate : dayjs().format('YYYY-MM-DD');
+
+    // Fetch top pins using the Pinterest API v5 top_pins_analytics endpoint
+    let topPins: any[] = [];
+    try {
+      const topPinsResponse = await (
+        await fetch(
+          `https://api.pinterest.com/v5/user_account/analytics/top_pins?start_date=${since}&end_date=${until}&sort_by=IMPRESSION&from_claimed_content=BOTH&pin_format=ALL&app_types=ALL&content_type=ALL&source=ALL&metric_types=IMPRESSION,PIN_CLICK,OUTBOUND_CLICK,SAVE&num_of_pins=3`,
+          { method: 'GET', headers }
+        )
+      ).json();
+
+      if (topPinsResponse?.pins) {
+        topPins = topPinsResponse.pins.map((pin: any) => ({
+          id: pin.pin_id || pin.id,
+          title: pin.title || pin.description?.substring(0, 60) || '',
+          imageUrl: pin.media?.images?.['150x150']?.url || pin.image_medium_url || '',
+          url: pin.pin_id
+            ? `https://www.pinterest.com/pin/${pin.pin_id}`
+            : '',
+          impressions: pin.metrics?.IMPRESSION || 0,
+          pinClicks: pin.metrics?.PIN_CLICK || 0,
+          saves: pin.metrics?.SAVE || 0,
+        }));
+      }
+    } catch (err) {
+      // top_pins_analytics may not be available for all account types
+    }
+
+    // Fetch boards list and their analytics
+    let topBoards: any[] = [];
+    try {
+      // Get all boards
+      const boardsResponse = await (
+        await fetch(`https://api.pinterest.com/v5/boards?page_size=25`, {
+          method: 'GET',
+          headers,
+        })
+      ).json();
+
+      if (boardsResponse?.items) {
+        // Fetch analytics for each board
+        const boardAnalyticsPromises = boardsResponse.items
+          .slice(0, 10)
+          .map(async (board: any) => {
+            try {
+              const analyticsResp = await (
+                await fetch(
+                  `https://api.pinterest.com/v5/boards/${board.id}/analytics?start_date=${since}&end_date=${until}&metric_types=IMPRESSION,PIN_CLICK,OUTBOUND_CLICK,SAVE`,
+                  { method: 'GET', headers }
+                )
+              ).json();
+
+              // Sum daily metrics
+              let totalImpressions = 0;
+              let totalPinClicks = 0;
+              let totalSaves = 0;
+              if (analyticsResp?.all?.daily_metrics) {
+                for (const day of analyticsResp.all.daily_metrics) {
+                  totalImpressions += day.metrics?.IMPRESSION || 0;
+                  totalPinClicks += day.metrics?.PIN_CLICK || 0;
+                  totalSaves += day.metrics?.SAVE || 0;
+                }
+              } else if (analyticsResp?.summary_metrics) {
+                totalImpressions =
+                  analyticsResp.summary_metrics.IMPRESSION || 0;
+                totalPinClicks = analyticsResp.summary_metrics.PIN_CLICK || 0;
+                totalSaves = analyticsResp.summary_metrics.SAVE || 0;
+              }
+
+              return {
+                id: board.id,
+                name: board.name,
+                imageUrl:
+                  board.media?.image_cover_url ||
+                  board.image_thumbnail_url ||
+                  '',
+                pinCount: board.pin_count || 0,
+                impressions: totalImpressions,
+                pinClicks: totalPinClicks,
+                saves: totalSaves,
+              };
+            } catch {
+              return {
+                id: board.id,
+                name: board.name,
+                imageUrl:
+                  board.media?.image_cover_url ||
+                  board.image_thumbnail_url ||
+                  '',
+                pinCount: board.pin_count || 0,
+                impressions: 0,
+                pinClicks: 0,
+                saves: 0,
+              };
+            }
+          });
+
+        const boardsWithAnalytics = await Promise.all(boardAnalyticsPromises);
+        // Sort by impressions and take top 3
+        topBoards = boardsWithAnalytics
+          .sort((a, b) => b.impressions - a.impressions)
+          .slice(0, 3);
+      }
+    } catch (err) {
+      // boards endpoint may fail
+    }
+
+    return { topBoards, topPins };
+  }
 }

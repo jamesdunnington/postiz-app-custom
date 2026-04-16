@@ -408,7 +408,9 @@ export class IntegrationService {
     org: Organization,
     integration: string,
     date: string,
-    forceRefresh = false
+    forceRefresh = false,
+    startDate?: string,
+    endDate?: string
   ): Promise<AnalyticsData[]> {
     const getIntegration = await this.getIntegrationById(org.id, integration);
 
@@ -472,26 +474,46 @@ export class IntegrationService {
       }
     }
 
-    const getIntegrationData = await ioRedis.get(
-      `integration:${org.id}:${integration}:${date}`
-    );
+    // Determine the effective date for caching and API calls
+    let effectiveDate = date;
+    let cacheKey: string;
+    if (date === '-1' && startDate && endDate) {
+      // Custom date range: calculate days between dates
+      const days = dayjs(endDate).diff(dayjs(startDate), 'day');
+      effectiveDate = String(days);
+      cacheKey = `integration:${org.id}:${integration}:custom:${startDate}:${endDate}`;
+    } else {
+      cacheKey = `integration:${org.id}:${integration}:${date}`;
+    }
+
+    const getIntegrationData = await ioRedis.get(cacheKey);
     if (getIntegrationData) {
       return JSON.parse(getIntegrationData);
     }
 
     if (integrationProvider.analytics) {
       try {
-        // Fetch current period analytics
-        const loadAnalytics = await integrationProvider.analytics(
-          getIntegration.internalId,
-          getIntegration.token,
-          +date
-        );
+        let loadAnalytics;
+        if (date === '-1' && startDate && endDate && integrationProvider.analyticsCustomRange) {
+          loadAnalytics = await integrationProvider.analyticsCustomRange(
+            getIntegration.internalId,
+            getIntegration.token,
+            startDate,
+            endDate
+          );
+        } else {
+          // Fetch current period analytics
+          loadAnalytics = await integrationProvider.analytics(
+            getIntegration.internalId,
+            getIntegration.token,
+            +effectiveDate
+          );
+        }
 
         // Fetch previous period for percentage change calculation
         // Check cache first to avoid unnecessary API calls
         let previousPeriodAnalytics = null;
-        const previousPeriodKey = `integration:${org.id}:${integration}:${date}:previous`;
+        const previousPeriodKey = `${cacheKey}:previous`;
         const cachedPreviousPeriod = await ioRedis.get(previousPeriodKey);
         
         if (cachedPreviousPeriod) {
@@ -505,14 +527,14 @@ export class IntegrationService {
             previousPeriodAnalytics = await integrationProvider.analytics(
               getIntegration.internalId,
               getIntegration.token,
-              +date * 2 // Double the date range to get comparison period
+              +effectiveDate * 2 // Double the date range to get comparison period
             );
             
             Sentry.logger.info(
               Sentry.logger.fmt`Fetched previous period analytics for integration ${integration}`,
               { 
                 provider: getIntegration.providerIdentifier,
-                dateRange: +date * 2
+                dateRange: +effectiveDate * 2
               }
             );
             
@@ -555,7 +577,7 @@ export class IntegrationService {
               );
               
               // Calculate total for previous period (only the comparison portion)
-              const previousData = previousMetric.data.slice(-parseInt(date));
+              const previousData = previousMetric.data.slice(-parseInt(effectiveDate));
               const previousTotal = previousData.reduce(
                 (sum: number, item: any) => sum + (parseFloat(item.total) || 0),
                 0
@@ -578,7 +600,7 @@ export class IntegrationService {
 
         // Cache the enhanced analytics
         await ioRedis.set(
-          `integration:${org.id}:${integration}:${date}`,
+          cacheKey,
           JSON.stringify(analyticsWithPercentage),
           'EX',
           !process.env.NODE_ENV || process.env.NODE_ENV === 'development'
@@ -588,12 +610,108 @@ export class IntegrationService {
         return analyticsWithPercentage;
       } catch (e) {
         if (e instanceof RefreshToken) {
-          return this.checkAnalytics(org, integration, date, true);
+          return this.checkAnalytics(org, integration, date, true, startDate, endDate);
         }
       }
     }
 
     return [];
+  }
+
+  async getPinterestTops(
+    org: Organization,
+    integration: string,
+    date: string,
+    startDate?: string,
+    endDate?: string
+  ) {
+    const getIntegration = await this.getIntegrationById(org.id, integration);
+
+    if (!getIntegration) {
+      throw new Error('Invalid integration');
+    }
+
+    if (getIntegration.providerIdentifier !== 'pinterest') {
+      return { topBoards: [], topPins: [] };
+    }
+
+    const integrationProvider = this._integrationManager.getSocialIntegration(
+      getIntegration.providerIdentifier
+    ) as any;
+
+    // Refresh token if needed
+    if (dayjs(getIntegration?.tokenExpiration).isBefore(dayjs())) {
+      const { accessToken, expiresIn, refreshToken, additionalSettings } =
+        await integrationProvider
+          .refreshToken(getIntegration.refreshToken!)
+          .catch(() => ({
+            accessToken: '',
+            expiresIn: undefined,
+            refreshToken: undefined,
+            additionalSettings: undefined,
+          }));
+
+      if (accessToken) {
+        await this.createOrUpdateIntegration(
+          additionalSettings,
+          !!integrationProvider.oneTimeToken,
+          getIntegration.organizationId,
+          getIntegration.name,
+          getIntegration.picture!,
+          'social',
+          getIntegration.internalId,
+          getIntegration.providerIdentifier,
+          accessToken,
+          refreshToken,
+          expiresIn
+        );
+        getIntegration.token = accessToken;
+      } else {
+        return { topBoards: [], topPins: [] };
+      }
+    }
+
+    // Build cache key
+    const cacheKeySuffix =
+      date === '-1' && startDate && endDate
+        ? `custom:${startDate}:${endDate}`
+        : date;
+    const cacheKey = `pinterest-tops:${org.id}:${integration}:${cacheKeySuffix}`;
+
+    const cached = await ioRedis.get(cacheKey);
+    if (cached) {
+      return JSON.parse(cached);
+    }
+
+    if (integrationProvider.getTopBoardsAndPins) {
+      try {
+        const result = await integrationProvider.getTopBoardsAndPins(
+          getIntegration.internalId,
+          getIntegration.token,
+          date === '-1' ? -1 : +date,
+          startDate,
+          endDate
+        );
+
+        await ioRedis.set(
+          cacheKey,
+          JSON.stringify(result),
+          'EX',
+          !process.env.NODE_ENV || process.env.NODE_ENV === 'development'
+            ? 1
+            : 3600
+        );
+
+        return result;
+      } catch (err) {
+        Sentry.logger.warn('Failed to fetch Pinterest tops', {
+          integration,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    return { topBoards: [], topPins: [] };
   }
 
   customers(orgId: string) {

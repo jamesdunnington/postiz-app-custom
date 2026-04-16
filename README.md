@@ -87,6 +87,9 @@
 
 - Schedule all your social media posts (many AI features)
 - Measure your work with analytics.
+- **Analytics Export** — export all analytics data for any integration as CSV.
+- **Flexible Date Ranges** — 7, 28, 30, 90-day presets plus custom start/end date picker.
+- **Pinterest Top Boards & Pins** — see your top 3 boards and top 3 pins by impressions for any date range.
 - **Pinterest Save Rate & Outbound Click analytics** — track key Pinterest performance metrics directly in your dashboard.
 - Collaborate with other team members to exchange or buy posts.
 - Invite your team members to collaborate, comment, and schedule posts.

@@ -28,6 +28,12 @@ export interface IAuthenticator {
     accessToken: string,
     date: number
   ): Promise<AnalyticsData[]>;
+  analyticsCustomRange?(
+    id: string,
+    accessToken: string,
+    startDate: string,
+    endDate: string
+  ): Promise<AnalyticsData[]>;
   changeNickname?(
     id: string,
     accessToken: string,
