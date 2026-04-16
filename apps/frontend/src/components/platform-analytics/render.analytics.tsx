@@ -278,6 +278,91 @@ export const RenderAnalytics: FC<{
         </div>
       </div>
 
+      {/* Performance Over Time Section */}
+      <div className="bg-newBgColorInner rounded-xl p-6 border border-customColor6">
+        <div className="mb-6">
+          <h2 className="text-2xl font-semibold mb-4">Performance over time</h2>
+          
+          {/* Metric Selectors */}
+          <div className="flex flex-wrap gap-4 items-center">
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-gray-400 font-medium">Metric</label>
+              <div className="w-48">
+                <Select
+                  label=""
+                  name="metric1"
+                  disableForm={true}
+                  hideErrors={true}
+                  value={selectedMetric1}
+                  onChange={(e) => setSelectedMetric1(+e.target.value)}
+                >
+                  {data?.map((metric: any, index: number) => (
+                    <option key={`m1-${index}`} value={index}>
+                      {metric.label}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 text-gray-500">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+              </svg>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-gray-400 font-medium">Metric</label>
+              <div className="w-48">
+                <Select
+                  label=""
+                  name="metric2"
+                  disableForm={true}
+                  hideErrors={true}
+                  value={selectedMetric2}
+                  onChange={(e) => setSelectedMetric2(+e.target.value)}
+                >
+                  {data?.map((metric: any, index: number) => (
+                    <option key={`m2-${index}`} value={index}>
+                      {metric.label}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Charts Comparison */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {[selectedMetric1, selectedMetric2].map((metricIndex, idx) => {
+            const metric = data?.[metricIndex];
+            if (!metric) return null;
+            
+            const isAverage = metric.average;
+            const totalValue = parseFloat(total[metricIndex]?.toString().replace(/,/g, '').replace(/%/g, '') || '0');
+            
+            return (
+              <div
+                key={`chart-${idx}`}
+                className="bg-newTableHeader rounded-lg p-5 border border-customColor6"
+              >
+                <div className="mb-4">
+                  <h3 className="text-lg font-semibold mb-1">{metric.label}</h3>
+                  <div className="text-3xl font-bold text-purple-400">
+                    {isAverage ? totalValue.toFixed(2) + '%' : formatNumber(totalValue)}
+                  </div>
+                </div>
+                
+                <div className="h-[300px] relative">
+                  <ChartSocial {...metric} key={`chart-social-${metricIndex}`} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Pinterest Top Boards & Pins Section */}
       {isPinterest && pinterestTops && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -363,91 +448,6 @@ export const RenderAnalytics: FC<{
           )}
         </div>
       )}
-
-      {/* Performance Over Time Section */}
-      <div className="bg-newBgColorInner rounded-xl p-6 border border-customColor6">
-        <div className="mb-6">
-          <h2 className="text-2xl font-semibold mb-4">Performance over time</h2>
-          
-          {/* Metric Selectors */}
-          <div className="flex flex-wrap gap-4 items-center">
-            <div className="flex items-center gap-3">
-              <label className="text-sm text-gray-400 font-medium">Metric</label>
-              <div className="w-48">
-                <Select
-                  label=""
-                  name="metric1"
-                  disableForm={true}
-                  hideErrors={true}
-                  value={selectedMetric1}
-                  onChange={(e) => setSelectedMetric1(+e.target.value)}
-                >
-                  {data?.map((metric: any, index: number) => (
-                    <option key={`m1-${index}`} value={index}>
-                      {metric.label}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 text-gray-500">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-              </svg>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <label className="text-sm text-gray-400 font-medium">Metric</label>
-              <div className="w-48">
-                <Select
-                  label=""
-                  name="metric2"
-                  disableForm={true}
-                  hideErrors={true}
-                  value={selectedMetric2}
-                  onChange={(e) => setSelectedMetric2(+e.target.value)}
-                >
-                  {data?.map((metric: any, index: number) => (
-                    <option key={`m2-${index}`} value={index}>
-                      {metric.label}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Charts Comparison */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {[selectedMetric1, selectedMetric2].map((metricIndex, idx) => {
-            const metric = data?.[metricIndex];
-            if (!metric) return null;
-            
-            const isAverage = metric.average;
-            const totalValue = parseFloat(total[metricIndex]?.toString().replace(/,/g, '').replace(/%/g, '') || '0');
-            
-            return (
-              <div
-                key={`chart-${idx}`}
-                className="bg-newTableHeader rounded-lg p-5 border border-customColor6"
-              >
-                <div className="mb-4">
-                  <h3 className="text-lg font-semibold mb-1">{metric.label}</h3>
-                  <div className="text-3xl font-bold text-purple-400">
-                    {isAverage ? totalValue.toFixed(2) + '%' : formatNumber(totalValue)}
-                  </div>
-                </div>
-                
-                <div className="h-[300px] relative">
-                  <ChartSocial {...metric} key={`chart-social-${metricIndex}`} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
     </div>
   );
 };

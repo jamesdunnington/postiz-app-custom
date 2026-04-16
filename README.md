@@ -91,6 +91,7 @@
 - **Flexible Date Ranges** — 7, 28, 30, 90-day presets plus custom start/end date picker.
 - **Pinterest Top Boards & Pins** — see your top 3 boards and top 3 pins by impressions for any date range.
 - **Pinterest Save Rate & Outbound Click analytics** — track key Pinterest performance metrics directly in your dashboard.
+- **Improved Dashboard Layout** — reordered analytics sections: Overall Performance → Performance Over Time Charts → Top Boards & Pins.
 - Collaborate with other team members to exchange or buy posts.
 - Invite your team members to collaborate, comment, and schedule posts.
 - At the moment there is no difference between the hosted version to the self-hosted version
