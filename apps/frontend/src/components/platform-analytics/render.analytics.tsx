@@ -363,89 +363,51 @@ export const RenderAnalytics: FC<{
         </div>
       </div>
 
-      {/* Pinterest Top Boards & Pins Section */}
-      {isPinterest && pinterestTops && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Top 3 Boards */}
-          {pinterestTops.topBoards?.length > 0 && (
-            <div className="bg-newBgColorInner rounded-xl p-6 border border-customColor6">
-              <h2 className="text-xl font-semibold mb-4">{t('top_boards', 'Top Boards')}</h2>
-              <div className="flex flex-col gap-3">
-                {pinterestTops.topBoards.slice(0, 3).map((board: any, i: number) => (
-                  <div
-                    key={board.id || i}
-                    className="bg-newTableHeader rounded-lg p-4 border border-customColor6 flex items-center gap-4"
-                  >
-                    <div className="text-2xl font-bold text-purple-400 w-8 text-center">
-                      {i + 1}
-                    </div>
-                    {board.imageUrl && (
-                      <img
-                        src={board.imageUrl}
-                        alt={board.name}
-                        className="w-12 h-12 rounded-md object-cover"
-                      />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-sm truncate">{board.name}</div>
-                      <div className="text-xs text-gray-400">
-                        {board.pinCount != null && `${board.pinCount} pins`}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-lg font-bold">{formatNumber(board.impressions || 0)}</div>
-                      <div className="text-xs text-gray-400">{t('impressions', 'Impressions')}</div>
-                    </div>
+      {/* Pinterest Top 10 Pins Section */}
+      {isPinterest && pinterestTops && pinterestTops.topPins?.length > 0 && (
+        <div className="bg-newBgColorInner rounded-xl p-6 border border-customColor6">
+          <h2 className="text-xl font-semibold mb-4">{t('top_pins', 'Top 10 Pins by Impressions')}</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {pinterestTops.topPins.slice(0, 10).map((pin: any, i: number) => (
+              <div
+                key={pin.id || i}
+                className="bg-newTableHeader rounded-lg p-4 border border-customColor6 flex items-center gap-4"
+              >
+                <div className="text-2xl font-bold text-purple-400 w-8 text-center">
+                  {i + 1}
+                </div>
+                {pin.imageUrl && (
+                  <img
+                    src={pin.imageUrl}
+                    alt={pin.title || 'Pin'}
+                    className="w-12 h-12 rounded-md object-cover"
+                  />
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-sm truncate">
+                    {pin.title || t('untitled_pin', 'Untitled Pin')}
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Top 3 Pins */}
-          {pinterestTops.topPins?.length > 0 && (
-            <div className="bg-newBgColorInner rounded-xl p-6 border border-customColor6">
-              <h2 className="text-xl font-semibold mb-4">{t('top_pins', 'Top Pins')}</h2>
-              <div className="flex flex-col gap-3">
-                {pinterestTops.topPins.slice(0, 3).map((pin: any, i: number) => (
-                  <div
-                    key={pin.id || i}
-                    className="bg-newTableHeader rounded-lg p-4 border border-customColor6 flex items-center gap-4"
-                  >
-                    <div className="text-2xl font-bold text-purple-400 w-8 text-center">
-                      {i + 1}
-                    </div>
-                    {pin.imageUrl && (
-                      <img
-                        src={pin.imageUrl}
-                        alt={pin.title || 'Pin'}
-                        className="w-12 h-12 rounded-md object-cover"
-                      />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-sm truncate">
-                        {pin.title || t('untitled_pin', 'Untitled Pin')}
-                      </div>
-                      {pin.url && (
-                        <a
-                          href={pin.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-purple-400 hover:underline"
-                        >
-                          {t('view_pin', 'View Pin')}
-                        </a>
-                      )}
-                    </div>
-                    <div className="text-right">
-                      <div className="text-lg font-bold">{formatNumber(pin.impressions || 0)}</div>
-                      <div className="text-xs text-gray-400">{t('impressions', 'Impressions')}</div>
-                    </div>
+                  {pin.url && (
+                    <a
+                      href={pin.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-purple-400 hover:underline"
+                    >
+                      {t('view_pin', 'View Pin')}
+                    </a>
+                  )}
+                </div>
+                <div className="text-right whitespace-nowrap">
+                  <div className="text-lg font-bold">{formatNumber(pin.impressions || 0)}</div>
+                  <div className="text-xs text-gray-400">{t('impressions', 'Impressions')}</div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {formatNumber(pin.saves || 0)} saves &middot; {formatNumber(pin.pinClicks || 0)} clicks
                   </div>
-                ))}
+                </div>
               </div>
-            </div>
-          )}
+            ))}
+          </div>
         </div>
       )}
     </div>

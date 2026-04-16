@@ -89,7 +89,7 @@
 - Measure your work with analytics.
 - **Analytics Export** — export all analytics data for any integration as CSV.
 - **Flexible Date Ranges** — 7, 28, 30, 90-day presets plus custom start/end date picker.
-- **Pinterest Top Boards & Pins** — see your top 3 boards and top 3 pins by impressions for any date range.
+- **Pinterest Top 10 Pins** — see your top 10 pins ranked by impressions with saves and clicks for any date range.
 - **Pinterest Save Rate & Outbound Click analytics** — track key Pinterest performance metrics directly in your dashboard.
 - **Improved Dashboard Layout** — reordered analytics sections: Overall Performance → Performance Over Time Charts → Top Boards & Pins.
 - Collaborate with other team members to exchange or buy posts.
