@@ -604,17 +604,46 @@ export class PinterestProvider
       ).json();
 
       if (topPinsResponse?.pins) {
-        topPins = topPinsResponse.pins.map((pin: any) => ({
-          id: pin.pin_id || pin.id,
-          title: pin.title || pin.description?.substring(0, 60) || '',
-          imageUrl: pin.media?.images?.['150x150']?.url || pin.image_medium_url || '',
-          url: pin.pin_id
-            ? `https://www.pinterest.com/pin/${pin.pin_id}`
-            : '',
-          impressions: pin.metrics?.IMPRESSION || 0,
-          pinClicks: pin.metrics?.PIN_CLICK || 0,
-          saves: pin.metrics?.SAVE || 0,
-        }));
+        // The top_pins endpoint returns metrics but often lacks title/image.
+        // Fetch full pin details for each pin to get title and image.
+        const pinDetailsPromises = topPinsResponse.pins.map(async (pin: any) => {
+          const pinId = pin.pin_id || pin.id;
+          let title = pin.title || '';
+          let imageUrl = pin.media?.images?.['150x150']?.url || pin.image_medium_url || '';
+          let description = pin.description || '';
+
+          if (pinId && (!title || !imageUrl)) {
+            try {
+              const pinDetail = await (
+                await fetch(`https://api.pinterest.com/v5/pins/${pinId}`, {
+                  method: 'GET',
+                  headers,
+                })
+              ).json();
+              title = title || pinDetail.title || pinDetail.description?.substring(0, 60) || '';
+              description = description || pinDetail.description || '';
+              imageUrl = imageUrl
+                || pinDetail.media?.images?.['150x150']?.url
+                || pinDetail.media?.images?.['400x300']?.url
+                || pinDetail.media?.images?.originals?.url
+                || '';
+            } catch {
+              // If pin detail fetch fails, use what we have
+            }
+          }
+
+          return {
+            id: pinId,
+            title: title || description?.substring(0, 60) || '',
+            imageUrl,
+            url: pinId ? `https://www.pinterest.com/pin/${pinId}` : '',
+            impressions: pin.metrics?.IMPRESSION || 0,
+            pinClicks: pin.metrics?.PIN_CLICK || 0,
+            saves: pin.metrics?.SAVE || 0,
+          };
+        });
+
+        topPins = await Promise.all(pinDetailsPromises);
       }
     } catch (err) {
       // top_pins_analytics may not be available for all account types
