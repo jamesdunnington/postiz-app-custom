@@ -92,6 +92,7 @@
 - **Pinterest Top 10 Pins** — see your top 10 pins ranked by impressions with saves and clicks for any date range.
 - **Pinterest Save Rate & Outbound Click analytics** — track key Pinterest performance metrics directly in your dashboard.
 - **Improved Dashboard Layout** — reordered analytics sections: Overall Performance → Performance Over Time Charts → Top Boards & Pins.
+- **Fixed Analytics Percentage Change** — corrected period-over-period comparison so up/down percentages now match Pinterest's own analytics. Uses exact date ranges for the previous period and proper average-based comparison for rate metrics like Save Rate.
 - Collaborate with other team members to exchange or buy posts.
 - Invite your team members to collaborate, comment, and schedule posts.
 - At the moment there is no difference between the hosted version to the self-hosted version

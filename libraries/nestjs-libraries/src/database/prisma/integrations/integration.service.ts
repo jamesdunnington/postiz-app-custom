@@ -513,35 +513,73 @@ export class IntegrationService {
         // Fetch previous period for percentage change calculation
         // Check cache first to avoid unnecessary API calls
         let previousPeriodAnalytics = null;
+        let previousPeriodIsExact = false; // true if we fetched the exact previous period (no slicing needed)
         const previousPeriodKey = `${cacheKey}:previous`;
         const cachedPreviousPeriod = await ioRedis.get(previousPeriodKey);
         
         if (cachedPreviousPeriod) {
-          previousPeriodAnalytics = JSON.parse(cachedPreviousPeriod);
+          const cached = JSON.parse(cachedPreviousPeriod);
+          previousPeriodAnalytics = cached.data || cached;
+          previousPeriodIsExact = cached.isExact || false;
           Sentry.logger.debug(
             Sentry.logger.fmt`Using cached previous period analytics for integration ${integration}`
           );
         } else {
           try {
-            // Fetch previous period data (same duration before current period)
-            previousPeriodAnalytics = await integrationProvider.analytics(
-              getIntegration.internalId,
-              getIntegration.token,
-              +effectiveDate * 2 // Double the date range to get comparison period
-            );
-            
-            Sentry.logger.info(
-              Sentry.logger.fmt`Fetched previous period analytics for integration ${integration}`,
-              { 
-                provider: getIntegration.providerIdentifier,
-                dateRange: +effectiveDate * 2
+            if (integrationProvider.analyticsCustomRange) {
+              // Best approach: fetch the exact previous period using explicit date range
+              let prevStartDate: string;
+              let prevEndDate: string;
+
+              if (date === '-1' && startDate && endDate) {
+                // Custom date range: previous period is the same duration ending the day before startDate
+                const days = dayjs(endDate).diff(dayjs(startDate), 'day');
+                prevEndDate = dayjs(startDate).subtract(1, 'day').format('YYYY-MM-DD');
+                prevStartDate = dayjs(startDate).subtract(days + 1, 'day').format('YYYY-MM-DD');
+              } else {
+                // Standard date range: previous period ends the day before the current period starts
+                prevEndDate = dayjs().subtract(+effectiveDate + 1, 'day').format('YYYY-MM-DD');
+                prevStartDate = dayjs().subtract(+effectiveDate * 2, 'day').format('YYYY-MM-DD');
               }
-            );
+
+              previousPeriodAnalytics = await integrationProvider.analyticsCustomRange(
+                getIntegration.internalId,
+                getIntegration.token,
+                prevStartDate,
+                prevEndDate
+              );
+              previousPeriodIsExact = true;
+
+              Sentry.logger.info(
+                Sentry.logger.fmt`Fetched exact previous period analytics for integration ${integration}`,
+                {
+                  provider: getIntegration.providerIdentifier,
+                  prevStartDate,
+                  prevEndDate,
+                }
+              );
+            } else {
+              // Fallback: fetch double the range and extract the earlier portion
+              previousPeriodAnalytics = await integrationProvider.analytics(
+                getIntegration.internalId,
+                getIntegration.token,
+                +effectiveDate * 2
+              );
+              previousPeriodIsExact = false;
+
+              Sentry.logger.info(
+                Sentry.logger.fmt`Fetched 2x range for previous period analytics for integration ${integration}`,
+                {
+                  provider: getIntegration.providerIdentifier,
+                  dateRange: +effectiveDate * 2,
+                }
+              );
+            }
             
             // Cache previous period data separately
             await ioRedis.set(
               previousPeriodKey,
-              JSON.stringify(previousPeriodAnalytics),
+              JSON.stringify({ data: previousPeriodAnalytics, isExact: previousPeriodIsExact }),
               'EX',
               !process.env.NODE_ENV || process.env.NODE_ENV === 'development'
                 ? 1
@@ -576,25 +614,49 @@ export class IntegrationService {
                 0
               );
               
-              // Calculate total for previous period (only the comparison portion)
-              const previousData = previousMetric.data.slice(-parseInt(effectiveDate));
+              // Extract previous period data
+              let previousData;
+              if (previousPeriodIsExact) {
+                // We fetched the exact previous period, use all data points
+                previousData = previousMetric.data;
+              } else {
+                // We fetched 2x range: extract the earlier portion (before the current period)
+                // The 2x data is sorted chronologically, so the first entries are the previous period
+                previousData = previousMetric.data.slice(
+                  0,
+                  previousMetric.data.length - metric.data.length
+                );
+              }
+
               const previousTotal = previousData.reduce(
                 (sum: number, item: any) => sum + (parseFloat(item.total) || 0),
                 0
               );
               
-              // Calculate percentage change
-              if (previousTotal > 0) {
-                percentageChange = ((currentTotal - previousTotal) / previousTotal) * 100;
-              } else if (currentTotal > 0) {
-                percentageChange = 100; // If previous was 0 and current is positive, it's 100% increase
+              // For average metrics (e.g. Save Rate), compare averages instead of sums
+              if (metric.average) {
+                const currentAvg = metric.data.length > 0 ? currentTotal / metric.data.length : 0;
+                const previousAvg = previousData.length > 0 ? previousTotal / previousData.length : 0;
+
+                if (previousAvg > 0) {
+                  percentageChange = ((currentAvg - previousAvg) / previousAvg) * 100;
+                } else if (currentAvg > 0) {
+                  percentageChange = 100;
+                }
+              } else {
+                // For sum metrics, compare totals
+                if (previousTotal > 0) {
+                  percentageChange = ((currentTotal - previousTotal) / previousTotal) * 100;
+                } else if (currentTotal > 0) {
+                  percentageChange = 100;
+                }
               }
             }
           }
           
           return {
             ...metric,
-            percentageChange: Math.round(percentageChange), // Round to nearest integer
+            percentageChange: Math.round(percentageChange),
           };
         });
 
