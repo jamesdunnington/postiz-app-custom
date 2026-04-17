@@ -78,17 +78,87 @@ export class BullMqClient extends ClientProxy {
     );
   }
 
-  async checkForStuckWaitingJobs(queueName: string) {
+  async checkQueueHealth(queueName: string) {
     const queue = this.getQueue(queueName);
-    const getJobs = await queue.getJobs('waiting' as const);
+    const issues: string[] = [];
+
+    // Check Redis connectivity
+    try {
+      await ioRedis.ping();
+    } catch {
+      return {
+        valid: false,
+        issues: ['Redis connection failed'],
+        counts: null,
+      };
+    }
+
+    // Get job counts by state
+    const counts = await queue.getJobCounts(
+      'waiting',
+      'active',
+      'completed',
+      'failed',
+      'delayed'
+    );
+
+    // Check for stuck waiting jobs (threshold: 10 minutes)
+    const waitingJobs = await queue.getJobs('waiting' as const);
     const now = Date.now();
-    const thresholdMs = 60 * 60 * 1000;
+    const stuckThresholdMs = 10 * 60 * 1000;
+    const stuckWaiting = waitingJobs.filter(
+      (job) => now - job.timestamp > stuckThresholdMs
+    );
+    if (stuckWaiting.length > 0) {
+      issues.push(
+        `${stuckWaiting.length} job(s) stuck waiting for over 10 minutes`
+      );
+    }
+
+    // Check for recent failed jobs (last 50 failed jobs within 15 minutes)
+    const failedJobs = await queue.getJobs('failed' as const, 0, 49);
+    const recentFailThresholdMs = 15 * 60 * 1000;
+    const recentFailed = failedJobs.filter(
+      (job) => job.finishedOn && now - job.finishedOn < recentFailThresholdMs
+    );
+    if (recentFailed.length >= 5) {
+      issues.push(
+        `${recentFailed.length} job(s) failed in the last 15 minutes`
+      );
+    }
+
+    // Check for stalled/active jobs that may indicate worker issues
+    // Active jobs older than 5 minutes may indicate stalled workers
+    const activeJobs = await queue.getJobs('active' as const);
+    const activeStallThresholdMs = 5 * 60 * 1000;
+    const stalledActive = activeJobs.filter(
+      (job) => now - job.timestamp > activeStallThresholdMs
+    );
+    if (stalledActive.length > 0) {
+      issues.push(
+        `${stalledActive.length} active job(s) possibly stalled (running over 5 minutes)`
+      );
+    }
+
+    // Check if workers are consuming jobs — if waiting count is high
+    // and no jobs are active, workers may be down
+    if (counts.waiting > 10 && counts.active === 0) {
+      issues.push(
+        `${counts.waiting} jobs waiting but no active workers processing`
+      );
+    }
+
     return {
-      valid: !getJobs.some((job) => {
-        const age = now - job.timestamp;
-        return age > thresholdMs;
-      }),
+      valid: issues.length === 0,
+      issues,
+      counts,
     };
+  }
+
+  // Keep backward-compatible alias
+  async checkForStuckWaitingJobs(queueName: string) {
+    const result = await this.checkQueueHealth(queueName);
+    return { valid: result.valid };
   }
 
   async dispatchEvent(packet: ReadPacket<any>): Promise<any> {

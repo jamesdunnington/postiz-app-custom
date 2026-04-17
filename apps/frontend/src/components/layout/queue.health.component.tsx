@@ -4,9 +4,21 @@ import { useCallback, useEffect, useState } from 'react';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import clsx from 'clsx';
 
+interface HealthData {
+  healthy: boolean;
+  issues: string[];
+  counts: {
+    waiting: number;
+    active: number;
+    completed: number;
+    failed: number;
+    delayed: number;
+  } | null;
+}
+
 const QueueHealthComponent = () => {
   const fetch = useFetch();
-  const [healthy, setHealthy] = useState<boolean | null>(null);
+  const [health, setHealth] = useState<HealthData | null>(null);
 
   const checkHealth = useCallback(async () => {
     try {
@@ -14,9 +26,27 @@ const QueueHealthComponent = () => {
         method: 'GET',
       });
 
-      setHealthy(response.ok);
+      const data = await response.json();
+
+      if (response.ok) {
+        setHealth({
+          healthy: true,
+          issues: [],
+          counts: data.counts ?? null,
+        });
+      } else {
+        setHealth({
+          healthy: false,
+          issues: data.issues ?? [data.message ?? 'Unknown issue'],
+          counts: data.counts ?? null,
+        });
+      }
     } catch {
-      setHealthy(false);
+      setHealth({
+        healthy: false,
+        issues: ['Unable to reach health endpoint'],
+        counts: null,
+      });
     }
   }, [fetch]);
 
@@ -27,30 +57,46 @@ const QueueHealthComponent = () => {
   }, [checkHealth]);
 
   const statusColor =
-    healthy === null
+    health === null
       ? 'bg-gray-400'
-      : healthy
+      : health.healthy
       ? 'bg-green-500'
       : 'bg-red-500';
 
-  const statusLabel =
-    healthy === null
-      ? 'Checking queue status...'
-      : healthy
-      ? 'Queue is healthy — posts are being sent'
-      : 'Queue issue — posts may not be sending';
+  const buildTooltip = () => {
+    if (health === null) return 'Checking queue status...';
+    if (health.healthy) {
+      const parts = ['Queue is healthy — posts are being sent'];
+      if (health.counts) {
+        parts.push(
+          `Active: ${health.counts.active}, Waiting: ${health.counts.waiting}, Failed: ${health.counts.failed}`
+        );
+      }
+      return parts.join('\n');
+    }
+    const parts = ['Queue issue — posts may not be sending'];
+    if (health.issues.length > 0) {
+      parts.push(...health.issues);
+    }
+    if (health.counts) {
+      parts.push(
+        `Active: ${health.counts.active}, Waiting: ${health.counts.waiting}, Failed: ${health.counts.failed}`
+      );
+    }
+    return parts.join('\n');
+  };
 
   return (
-    <div className="flex items-center gap-[6px] cursor-default" title={statusLabel}>
+    <div className="flex items-center gap-[6px] cursor-default" title={buildTooltip()}>
       <span
         className={clsx(
           'inline-block w-[10px] h-[10px] rounded-full',
           statusColor,
-          healthy && 'animate-pulse'
+          health?.healthy && 'animate-pulse'
         )}
       />
       <span className="hidden md:inline text-[12px] text-textColor">
-        {healthy === null ? 'Checking...' : healthy ? 'Healthy' : 'Unhealthy'}
+        {health === null ? 'Checking...' : health.healthy ? 'Healthy' : 'Unhealthy'}
       </span>
     </div>
   );

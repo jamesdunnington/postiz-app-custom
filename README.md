@@ -93,6 +93,8 @@
 - **Pinterest Save Rate & Outbound Click analytics** — track key Pinterest performance metrics directly in your dashboard.
 - **Improved Dashboard Layout** — reordered analytics sections: Overall Performance → Performance Over Time Charts → Top Boards & Pins.
 - **Fixed Analytics Percentage Change** — corrected period-over-period comparison so up/down percentages now match Pinterest's own analytics. Uses exact date ranges for the previous period and proper average-based comparison for rate metrics like Save Rate.
+- **Enhanced Queue Health Check** — health indicator now checks Redis connectivity, failed jobs, stalled workers, and idle worker detection with tighter thresholds (10 min stuck, 5 min stalled, 5+ recent failures). Tooltip shows detailed job counts and specific issues.
+- **Fixed Notification Z-Index** — notification dropdown now always renders above media page elements so close buttons no longer overlap notification text.
 - Collaborate with other team members to exchange or buy posts.
 - Invite your team members to collaborate, comment, and schedule posts.
 - At the moment there is no difference between the hosted version to the self-hosted version

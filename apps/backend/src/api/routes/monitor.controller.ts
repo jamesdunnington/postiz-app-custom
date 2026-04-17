@@ -9,20 +9,23 @@ export class MonitorController {
 
   @Get('/queue/:name')
   async getMessagesGroup(@Param('name') name: string) {
-    const { valid } =
-      await this._workerServiceProducer.checkForStuckWaitingJobs(name);
+    const { valid, issues, counts } =
+      await this._workerServiceProducer.checkQueueHealth(name);
 
     if (valid) {
       return {
         status: 'success',
         message: `Queue ${name} is healthy.`,
+        counts,
       };
     }
 
     throw new HttpException(
       {
         status: 'error',
-        message: `Queue ${name} has stuck waiting jobs.`,
+        message: `Queue ${name} is unhealthy.`,
+        issues,
+        counts,
       },
       503
     );
