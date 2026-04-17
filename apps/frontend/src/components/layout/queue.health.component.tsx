@@ -19,6 +19,7 @@ interface HealthData {
 const QueueHealthComponent = () => {
   const fetch = useFetch();
   const [health, setHealth] = useState<HealthData | null>(null);
+  const [hasConnected, setHasConnected] = useState(false);
 
   const checkHealth = useCallback(async () => {
     try {
@@ -27,6 +28,7 @@ const QueueHealthComponent = () => {
       });
 
       const data = await response.json();
+      setHasConnected(true);
 
       if (response.ok) {
         setHealth({
@@ -42,13 +44,16 @@ const QueueHealthComponent = () => {
         });
       }
     } catch {
-      setHealth({
-        healthy: false,
-        issues: ['Unable to reach health endpoint'],
-        counts: null,
-      });
+      if (hasConnected) {
+        setHealth({
+          healthy: false,
+          issues: ['Unable to reach health endpoint'],
+          counts: null,
+        });
+      }
+      // Stay in null (gray/checking) state until first successful response
     }
-  }, [fetch]);
+  }, [fetch, hasConnected]);
 
   useEffect(() => {
     checkHealth();
