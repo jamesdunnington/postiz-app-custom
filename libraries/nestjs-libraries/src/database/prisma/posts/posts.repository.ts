@@ -34,7 +34,7 @@ export class PostsRepository {
       where: {
         publishDate: {
           lte: dayjs.utc().subtract(15, 'minute').toDate(),
-          gte: dayjs.utc().subtract(30, 'minute').toDate(),
+          gte: dayjs.utc().subtract(2, 'hour').toDate(),
         },
         state: 'QUEUE',
         deletedAt: null,

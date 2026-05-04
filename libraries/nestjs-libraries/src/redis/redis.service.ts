@@ -26,5 +26,6 @@ export const ioRedis = process.env.REDIS_URL
   ? new Redis(process.env.REDIS_URL, {
       maxRetriesPerRequest: null,
       connectTimeout: 10000,
+      keepAlive: 30000,
     })
   : (new MockRedis() as unknown as Redis); // Type cast to Redis to maintain interface compatibility
