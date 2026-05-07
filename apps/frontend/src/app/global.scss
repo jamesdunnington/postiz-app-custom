@@ -15,6 +15,42 @@ body * {
   outline: none !important;
 }
 
+/* ── Neo-Brutalist overrides ───────────────────────────────────────────────── */
+/* Thicker, harder borders */
+.light .border,
+.light [class*="border-"] {
+  border-width: 2px;
+}
+
+/* Hard offset shadow on interactive cards/panels in light mode */
+.light .rounded-xl,
+.light .rounded-lg {
+  box-shadow: 3px 3px 0 0 var(--new-bgLineColor);
+}
+
+/* Primary buttons get a brutalist stamp */
+.light .bg-forth {
+  box-shadow: 3px 3px 0 0 #1c1208;
+}
+.light .bg-forth:hover {
+  box-shadow: 1px 1px 0 0 #1c1208;
+  transform: translate(2px, 2px);
+}
+
+/* Dark mode brutalist shadow */
+.dark .rounded-xl,
+.dark .rounded-lg {
+  box-shadow: 3px 3px 0 0 #4a2a08;
+}
+.dark .bg-forth {
+  box-shadow: 3px 3px 0 0 #4a2a08;
+}
+.dark .bg-forth:hover {
+  box-shadow: 1px 1px 0 0 #4a2a08;
+  transform: translate(2px, 2px);
+}
+/* ────────────────────────────────────────────────────────────────────────── */
+
 .box {
   position: relative;
 }
