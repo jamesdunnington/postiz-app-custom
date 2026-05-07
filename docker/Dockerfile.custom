@@ -1,4 +1,4 @@
-FROM ghcr.io/jamesdunnington/postiz-app-base:stable
+FROM ghcr.io/jamesdunnington/postiz-app-base:latest
 
 COPY patches/workers/ /app/apps/workers/
 COPY patches/backend/ /app/apps/backend/
