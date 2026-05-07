@@ -51,10 +51,15 @@ export class CleanupOrphanedMediaStartup implements OnModuleInit {
                 signal: controller.signal,
               });
               clearTimeout(timeout);
-              if (!response.ok) return media.id;
+              // Only treat as orphaned on an explicit 404 — connection errors,
+              // timeouts, or other HTTP errors mean we cannot confirm the file
+              // is gone (e.g. frontend is still starting up), so we skip.
+              if (response.status === 404) return media.id;
               return null;
             } catch {
-              return media.id;
+              // Connection refused, timeout, DNS failure, etc. — the frontend
+              // may simply be unavailable right now.  Do NOT mark as orphaned.
+              return null;
             }
           })
         );
