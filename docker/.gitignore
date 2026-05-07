@@ -1,3 +1,0 @@
-# Allow patch files under dist/ even though the root .gitignore excludes dist/
-!patches/**/dist/
-!patches/**/dist/**
