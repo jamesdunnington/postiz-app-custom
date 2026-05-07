@@ -1,4 +1,22 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(find \"d:\\\\Vibe Coding\\\\postiz-API\" -name \"*post*\" -type f -path \"*/src/*\" | head -20)",
+      "Read(//d/Vibe Coding/postiz-API/**)",
+      "Bash(xargs grep -l \"GET.*posts\\\\|@Get.*posts\")",
+      "Bash(find \"d:/Vibe Coding\" -path \"*/src/*\" -name \"*post*\" -type f 2>/dev/null | grep -E \"\\(controller|service|route\\)\" | head -20)",
+      "Read(//d/Vibe Coding/**)",
+      "Bash(docker pull *)",
+      "PowerShell(docker pull ghcr.io/jamesdunnington/postiz-app-base:stable)",
+      "Bash(pnpm --filter @gitroom/nestjs-libraries exec tsc --noEmit)",
+      "Bash(pnpm run *)",
+      "Bash(gh repo *)",
+      "Bash(grep -E '\\\\.\\(tsx|ts\\)$')",
+      "Bash(Get-ChildItem -Path \"d:\\\\Vibe Coding\\\\postiz-app\\\\apps\\\\frontend\\\\src\\\\app\\\\\\(app\\)\\\\auth\\\\\" -Recurse | Select-Object FullName)",
+      "Bash(xargs sed -i \"s/? 'Postiz' : 'Gitroom'/? 'TheContentWarrior' : 'JDCO'/g; s/? 'Content Warrior' : 'Gitroom'/? 'TheContentWarrior' : 'JDCO'/g; s/isGeneral ? 'Content Warrior' : 'Gitroom'/isGeneral ? 'TheContentWarrior' : 'JDCO'/g\")",
+      "Bash(xargs sed -i \"s/: 'Gitroom'} /: 'JDCO'} /g; s/: 'Gitroom'\\\\`/: 'JDCO'\\\\`/g; s/'Gitroom'$/'JDCO'/g\")"
+    ]
+  },
   "enableAllProjectMcpServers": true,
   "defaultMode": "bypassPermissions"
 }
