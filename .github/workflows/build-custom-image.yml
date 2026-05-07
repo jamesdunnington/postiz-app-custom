@@ -27,9 +27,24 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Pull base image and extract posts.repository.js files
+      - name: Discover file structure in base image
         run: |
           docker pull ghcr.io/gitroomhq/postiz-app:latest
+          echo "=== posts.repository.js locations ==="
+          docker run --rm --entrypoint="" ghcr.io/gitroomhq/postiz-app:latest \
+            sh -c "find /app -type f -name 'posts.repository.js' 2>/dev/null | grep -v node_modules | sort" || true
+          echo "=== strategy.js locations ==="
+          docker run --rm --entrypoint="" ghcr.io/gitroomhq/postiz-app:latest \
+            sh -c "find /app -type f -name 'strategy.js' 2>/dev/null | grep -v node_modules | sort" || true
+          echo "=== redis.service.js locations ==="
+          docker run --rm --entrypoint="" ghcr.io/gitroomhq/postiz-app:latest \
+            sh -c "find /app -type f -name 'redis.service.js' 2>/dev/null | grep -v node_modules | sort" || true
+          echo "=== /app top-level structure ==="
+          docker run --rm --entrypoint="" ghcr.io/gitroomhq/postiz-app:latest \
+            sh -c "find /app -maxdepth 4 -type d 2>/dev/null | sort" || true
+
+      - name: Extract and patch posts.repository.js files
+        run: |
           id=$(docker create ghcr.io/gitroomhq/postiz-app:latest)
 
           mkdir -p docker/patches/backend/dist/libraries/nestjs-libraries/src/database/prisma/posts
