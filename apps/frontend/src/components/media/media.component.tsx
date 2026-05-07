@@ -455,14 +455,15 @@ export const MediaBox: FC<{
                   <div className="flex absolute h-[57px] w-full start-0 top-0 rounded-lg transition-all group text-sm font-semibold bg-transparent text-gray-800 hover:bg-gray-100 focus:text-primary-500">
                     <div className="relative flex flex-1 pe-[55px] gap-2 items-center justify-center">
                       <div className="flex-1" />
-                      <button
+                      <Button
                         onClick={recoverMedia}
+                        secondary={true}
                         disabled={recovering}
-                        className="text-xs text-textColor hover:text-white border border-tableBorder rounded px-2 py-1 disabled:opacity-50"
+                        className="!text-xs !px-2 !py-1 !h-auto"
                         title="Restore media records for images used in scheduled posts"
                       >
                         {recovering ? 'Recovering...' : 'Recover Missing'}
-                      </button>
+                      </Button>
                       <MultipartFileUploader
                         uppRef={ref}
                         onUploadSuccess={finishUpload}
