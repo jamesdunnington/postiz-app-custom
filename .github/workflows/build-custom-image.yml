@@ -29,8 +29,8 @@ jobs:
 
       - name: Pull base image and extract posts.repository.js files
         run: |
-          docker pull ghcr.io/jamesdunnington/postiz-app-base:latest
-          id=$(docker create ghcr.io/jamesdunnington/postiz-app-base:latest)
+          docker pull ghcr.io/gitroomhq/postiz-app:latest
+          id=$(docker create ghcr.io/gitroomhq/postiz-app:latest)
 
           mkdir -p docker/patches/backend/dist/libraries/nestjs-libraries/src/database/prisma/posts
           mkdir -p docker/patches/workers/dist/libraries/nestjs-libraries/src/database/prisma/posts
