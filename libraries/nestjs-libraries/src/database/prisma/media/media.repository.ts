@@ -110,6 +110,44 @@ export class MediaRepository {
     });
   }
 
+  async getExistingPathsForOrg(org: string, paths: string[]) {
+    if (paths.length === 0) return new Set<string>();
+    const records = await this._media.model.media.findMany({
+      where: { organizationId: org, path: { in: paths } },
+      select: { path: true },
+    });
+    return new Set(records.map((r) => r.path));
+  }
+
+  async restoreSoftDeletedByPaths(org: string, paths: string[]) {
+    if (paths.length === 0) return 0;
+    const result = await this._media.model.media.updateMany({
+      where: {
+        organizationId: org,
+        path: { in: paths },
+        deletedAt: { not: null },
+      },
+      data: { deletedAt: null },
+    });
+    return result.count;
+  }
+
+  async createMediaRecords(
+    org: string,
+    paths: string[]
+  ): Promise<number> {
+    if (paths.length === 0) return 0;
+    await this._media.model.media.createMany({
+      data: paths.map((path) => ({
+        organizationId: org,
+        name: path.split('/').pop() ?? path,
+        path,
+      })),
+      skipDuplicates: true,
+    });
+    return paths.length;
+  }
+
   async getMedia(org: string, page: number) {
     const pageNum = (page || 1) - 1;
     const query = {

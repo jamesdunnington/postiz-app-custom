@@ -701,4 +701,17 @@ export class IntegrationsController {
           : 'No published posts found',
     };
   }
+
+  @Post('/recover-media')
+  async recoverMedia(@GetOrgFromRequest() org: Organization) {
+    const result = await this._integrationService.recoverMediaFromPosts(org.id);
+    return {
+      success: true,
+      recovered: result.recovered,
+      message:
+        result.recovered > 0
+          ? `Recovered ${result.recovered} media records from active posts`
+          : 'No missing media records found',
+    };
+  }
 }

@@ -203,6 +203,7 @@ export const MediaBox: FC<{
   const [page, setPage] = useState(0);
   const [pages, setPages] = useState(0);
   const [selectedMedia, setSelectedMedia] = useState<Media[]>([]);
+  const [recovering, setRecovering] = useState(false);
   const ref = useRef<any>(null);
 
   useEffect(() => {
@@ -345,6 +346,22 @@ export const MediaBox: FC<{
     [mutate]
   );
 
+  const recoverMedia = useCallback(async () => {
+    setRecovering(true);
+    try {
+      const res = await (
+        await fetch('/integrations/recover-media', { method: 'POST' })
+      ).json();
+      if (res.recovered > 0) {
+        setPage(0);
+        await mutate();
+      }
+      alert(res.message);
+    } finally {
+      setRecovering(false);
+    }
+  }, [fetch, mutate]);
+
   const refNew = useRef(null);
 
   useEffect(() => {
@@ -438,6 +455,14 @@ export const MediaBox: FC<{
                   <div className="flex absolute h-[57px] w-full start-0 top-0 rounded-lg transition-all group text-sm font-semibold bg-transparent text-gray-800 hover:bg-gray-100 focus:text-primary-500">
                     <div className="relative flex flex-1 pe-[55px] gap-2 items-center justify-center">
                       <div className="flex-1" />
+                      <button
+                        onClick={recoverMedia}
+                        disabled={recovering}
+                        className="text-xs text-textColor hover:text-white border border-tableBorder rounded px-2 py-1 disabled:opacity-50"
+                        title="Restore media records for images used in scheduled posts"
+                      >
+                        {recovering ? 'Recovering...' : 'Recover Missing'}
+                      </button>
                       <MultipartFileUploader
                         uppRef={ref}
                         onUploadSuccess={finishUpload}

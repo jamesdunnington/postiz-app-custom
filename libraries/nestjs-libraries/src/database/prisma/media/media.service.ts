@@ -72,6 +72,18 @@ export class MediaService {
     return this._mediaRepository.softDeleteMediaByIds(ids);
   }
 
+  getExistingPathsForOrg(org: string, paths: string[]) {
+    return this._mediaRepository.getExistingPathsForOrg(org, paths);
+  }
+
+  restoreSoftDeletedByPaths(org: string, paths: string[]) {
+    return this._mediaRepository.restoreSoftDeletedByPaths(org, paths);
+  }
+
+  createMediaRecords(org: string, paths: string[]) {
+    return this._mediaRepository.createMediaRecords(org, paths);
+  }
+
   saveMediaInformation(org: string, data: SaveMediaInformationDto) {
     return this._mediaRepository.saveMediaInformation(org, data);
   }

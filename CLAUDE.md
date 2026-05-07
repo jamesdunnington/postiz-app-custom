@@ -53,6 +53,7 @@ pnpm --filter ./apps/frontend run lint
 - **pnpm**: 10.6.1
 - **Prettier**: `singleQuote: true` only — minimal config
 - **GitHub CLI**: `gh` is installed. Always use `gh` for all GitHub operations (push, PR creation, issue management, release tagging). Never instruct the user to use raw `git push` to remote — prefer `gh repo sync`, `gh pr create`, etc.
+- **Builds run on GitHub Actions only** — never attempt `pnpm build`, `tsc --noEmit`, `nest build`, or any compile/type-check command locally. The local machine has no `node_modules` and is not set up for building. Push to GitHub and let CI handle all builds.
 
 ## Architecture
 

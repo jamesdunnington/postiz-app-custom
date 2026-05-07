@@ -1585,6 +1585,70 @@ export class IntegrationService {
     }
   }
 
+  async recoverMediaFromPosts(orgId: string) {
+    const { logger } = Sentry;
+    console.log('[MEDIA RECOVERY] Starting media recovery from active posts...');
+
+    try {
+      const activePosts = await this._postsRepository.getActivePostImages(orgId);
+
+      // Collect unique image paths from all active posts
+      const pathSet = new Set<string>();
+      for (const post of activePosts) {
+        if (post.image) {
+          try {
+            const images = JSON.parse(post.image);
+            if (Array.isArray(images)) {
+              for (const img of images) {
+                if (img.path) pathSet.add(img.path);
+              }
+            }
+          } catch {
+            // skip malformed
+          }
+        }
+      }
+
+      const allPaths = Array.from(pathSet);
+      if (allPaths.length === 0) {
+        return { recovered: 0 };
+      }
+
+      // Restore any soft-deleted records first (in case they weren't purged yet)
+      const restored = await this._mediaRepository.restoreSoftDeletedByPaths(
+        orgId,
+        allPaths
+      );
+
+      // Create new records for paths that have no media record at all
+      const existingPaths = await this._mediaRepository.getExistingPathsForOrg(
+        orgId,
+        allPaths
+      );
+      const missingPaths = allPaths.filter((p) => !existingPaths.has(p));
+      const created = await this._mediaRepository.createMediaRecords(
+        orgId,
+        missingPaths
+      );
+
+      const total = restored + created;
+      console.log(
+        `[MEDIA RECOVERY] ✅ Recovered ${total} media records (${restored} restored, ${created} created)`
+      );
+      logger.info('Media recovery complete', { restored, created, total });
+      return { recovered: total, restored, created };
+    } catch (err) {
+      Sentry.captureException(err, {
+        extra: { context: 'recoverMediaFromPosts failed', orgId },
+      });
+      logger.error(
+        `Media recovery error: ${err instanceof Error ? err.message : String(err)}`
+      );
+      console.error('[MEDIA RECOVERY] ❌ Error:', err);
+      return { recovered: 0, error: String(err) };
+    }
+  }
+
   async checkIntegrationConnection(orgId: string, integrationId: string) {
     const { logger } = Sentry;
     

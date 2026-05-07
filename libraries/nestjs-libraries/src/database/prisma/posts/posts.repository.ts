@@ -283,6 +283,34 @@ export class PostsRepository {
       }
     }
 
+    // Find image paths still referenced by active (non-published, non-deleted) posts
+    // so we don't delete files/records that are reused in future scheduled posts.
+    const activePosts = await this._post.model.post.findMany({
+      where: {
+        organizationId: orgId,
+        state: { not: 'PUBLISHED' },
+        deletedAt: null,
+      },
+      select: { image: true },
+    });
+    const activePathSet = new Set<string>();
+    for (const post of activePosts) {
+      if (post.image) {
+        try {
+          const images = JSON.parse(post.image);
+          if (Array.isArray(images)) {
+            for (const img of images) {
+              if (img.path) activePathSet.add(img.path);
+            }
+          }
+        } catch {
+          // skip malformed image JSON
+        }
+      }
+    }
+    // Only return paths that are not still in use by future/scheduled posts
+    const safeToDeletePaths = imagePaths.filter((p) => !activePathSet.has(p));
+
     await this._post.model.post.updateMany({
       where: {
         organizationId: orgId,
@@ -294,7 +322,7 @@ export class PostsRepository {
       },
     });
 
-    return { removed: published.length, imagePaths };
+    return { removed: published.length, imagePaths: safeToDeletePaths };
   }
 
   getPost(
@@ -1686,6 +1714,16 @@ export class PostsRepository {
    * Get all QUEUE posts for BullMQ sync - returns posts scheduled in the next 30 days
    * Used by SyncBullMqJobs to ensure all posts have correct BullMQ job delays
    */
+  async getActivePostImages(orgId: string) {
+    return this._post.model.post.findMany({
+      where: {
+        organizationId: orgId,
+        deletedAt: null,
+      },
+      select: { image: true },
+    });
+  }
+
   async getAllQueuedPostsForSync() {
     return this._post.model.post.findMany({
       where: {
