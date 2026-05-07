@@ -1,0 +1,60 @@
+name: Build and Push Custom Postiz Image
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docker/**'
+      - '.github/workflows/build-custom-image.yml'
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull base image and extract posts.repository.js files
+        run: |
+          docker pull ghcr.io/jamesdunnington/postiz-app-base:stable
+          id=$(docker create ghcr.io/jamesdunnington/postiz-app-base:stable)
+
+          mkdir -p docker/patches/backend/dist/libraries/nestjs-libraries/src/database/prisma/posts
+          mkdir -p docker/patches/workers/dist/libraries/nestjs-libraries/src/database/prisma/posts
+          mkdir -p docker/patches/cron/dist/libraries/nestjs-libraries/src/database/prisma/posts
+
+          docker cp "$id":/app/apps/backend/dist/libraries/nestjs-libraries/src/database/prisma/posts/posts.repository.js \
+            docker/patches/backend/dist/libraries/nestjs-libraries/src/database/prisma/posts/posts.repository.js
+
+          docker cp "$id":/app/apps/workers/dist/libraries/nestjs-libraries/src/database/prisma/posts/posts.repository.js \
+            docker/patches/workers/dist/libraries/nestjs-libraries/src/database/prisma/posts/posts.repository.js
+
+          docker cp "$id":/app/apps/cron/dist/libraries/nestjs-libraries/src/database/prisma/posts/posts.repository.js \
+            docker/patches/cron/dist/libraries/nestjs-libraries/src/database/prisma/posts/posts.repository.js
+
+          # Patch cron: extend recovery window from 30 minutes to 2 hours
+          sed -i "s/subtract(30, 'minute')/subtract(2, 'hour')/" \
+            docker/patches/cron/dist/libraries/nestjs-libraries/src/database/prisma/posts/posts.repository.js
+
+          docker rm "$id"
+
+      - name: Build and push custom image
+        uses: docker/build-push-action@v5
+        with:
+          context: docker
+          file: docker/Dockerfile.custom
+          push: true
+          tags: ghcr.io/jamesdunnington/postiz-app-custom:latest

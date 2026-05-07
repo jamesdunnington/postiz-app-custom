@@ -1,0 +1,7 @@
+FROM ghcr.io/jamesdunnington/postiz-app-base:stable
+
+COPY patches/workers/ /app/apps/workers/
+COPY patches/backend/ /app/apps/backend/
+COPY patches/cron/    /app/apps/cron/
+
+CMD ["sh", "-c", "nginx && pm2 delete all || true && pnpm run --parallel pm2 && pm2 logs"]
