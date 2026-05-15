@@ -972,17 +972,23 @@ export class PostsRepository {
     });
   }
 
-  async getMissedPostsForIntegration(integrationId: string) {
+  async getMissedPostsForIntegration(
+    integrationId: string,
+    includeRecent = false
+  ) {
+    // includeRecent=true is used by the global pause/resume resume flow:
+    // the queue is fully paused so there are no in-flight publishes to
+    // race with, and the user expects every past-due post to be rescheduled.
+    const cutoff = includeRecent
+      ? dayjs.utc().toDate()
+      : dayjs.utc().subtract(30, 'minute').toDate();
+
     return this._post.model.post.findMany({
       where: {
         integrationId,
         state: 'QUEUE',
         publishDate: {
-          // Only get posts older than 30 minutes to avoid conflict with:
-          // 1. Posts currently being published (need buffer)
-          // 2. Posts in 15-30 min window (handled by PostNowPendingQueues which posts them immediately)
-          // Posts 15-30 min old should be posted, not rescheduled
-          lt: dayjs.utc().subtract(30, 'minute').toDate(),
+          lt: cutoff,
         },
         deletedAt: null,
         parentPostId: null,
@@ -996,6 +1002,21 @@ export class PostsRepository {
         organizationId: true,
       },
     });
+  }
+
+  async getIntegrationIdsWithMissedPosts(): Promise<string[]> {
+    const rows = await this._post.model.post.findMany({
+      where: {
+        state: 'QUEUE',
+        publishDate: { lt: dayjs.utc().toDate() },
+        deletedAt: null,
+        parentPostId: null,
+        integration: { disabled: false },
+      },
+      distinct: ['integrationId'],
+      select: { integrationId: true },
+    });
+    return rows.map((r) => r.integrationId).filter(Boolean) as string[];
   }
 
   async updatePostPublishDate(postId: string, newPublishDate: Date) {

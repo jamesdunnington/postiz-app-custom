@@ -37,6 +37,7 @@ import { OpenaiService } from '@gitroom/nestjs-libraries/openai/openai.service';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
+import { PublishingStateService } from '@gitroom/nestjs-libraries/redis/publishing.state.service';
 dayjs.extend(utc);
 import * as Sentry from '@sentry/nestjs';
 
@@ -59,7 +60,8 @@ export class PostsService {
     private _mediaService: MediaService,
     private _shortLinkService: ShortLinkService,
     private _webhookService: WebhooksService,
-    private openaiService: OpenaiService
+    private openaiService: OpenaiService,
+    private _publishingState: PublishingStateService
   ) {}
 
   checkPending15minutesBack() {
@@ -1122,16 +1124,18 @@ export class PostsService {
 
   async rescheduleMissedPosts(
     integrationId: string,
-    integration: Integration
+    integration: Integration,
+    includeRecent = false
   ) {
     const { logger } = Sentry;
     try {
       // Get user timezone from integration's organization
       const userTimezone = await this._integrationService.getUserTimezone(integrationId);
-      
+
       // Get all missed posts for this integration
       const missedPosts = await this._postRepository.getMissedPostsForIntegration(
-        integrationId
+        integrationId,
+        includeRecent
       );
 
       if (missedPosts.length === 0) {
@@ -1223,5 +1227,61 @@ export class PostsService {
       );
       return { rescheduled: 0 };
     }
+  }
+
+  async getPublishingState() {
+    return { paused: await this._publishingState.isPaused() };
+  }
+
+  async pauseAllPublishing() {
+    await this._publishingState.setPaused(true);
+    try {
+      const queue = this._workerServiceProducer.getQueue('post');
+      await queue.pause();
+    } catch (err) {
+      Sentry.captureException(err, {
+        extra: { context: 'Failed to pause BullMQ post queue' },
+      });
+    }
+    return { paused: true };
+  }
+
+  async resumeAllPublishing() {
+    const integrationIds =
+      await this._postRepository.getIntegrationIdsWithMissedPosts();
+
+    let postsRescheduled = 0;
+    let integrationsRescheduled = 0;
+    for (const integrationId of integrationIds) {
+      const integration = await this._integrationService.getIntegrationByIdOnly(
+        integrationId
+      );
+      if (!integration) continue;
+      const { rescheduled } = await this.rescheduleMissedPosts(
+        integrationId,
+        integration,
+        true
+      );
+      if (rescheduled > 0) {
+        integrationsRescheduled++;
+        postsRescheduled += rescheduled;
+      }
+    }
+
+    try {
+      const queue = this._workerServiceProducer.getQueue('post');
+      await queue.resume();
+    } catch (err) {
+      Sentry.captureException(err, {
+        extra: { context: 'Failed to resume BullMQ post queue' },
+      });
+    }
+    await this._publishingState.setPaused(false);
+
+    return {
+      resumed: true,
+      integrationsRescheduled,
+      postsRescheduled,
+    };
   }
 }

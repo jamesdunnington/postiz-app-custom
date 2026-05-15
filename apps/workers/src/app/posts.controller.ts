@@ -3,6 +3,7 @@ import { EventPattern, Transport } from '@nestjs/microservices';
 import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.service';
 import { WebhooksService } from '@gitroom/nestjs-libraries/database/prisma/webhooks/webhooks.service';
 import { AutopostService } from '@gitroom/nestjs-libraries/database/prisma/autopost/autopost.service';
+import { PublishingStateService } from '@gitroom/nestjs-libraries/redis/publishing.state.service';
 import * as Sentry from '@sentry/nestjs';
 
 @Controller()
@@ -10,7 +11,8 @@ export class PostsController {
   constructor(
     private _postsService: PostsService,
     private _webhooksService: WebhooksService,
-    private _autopostsService: AutopostService
+    private _autopostsService: AutopostService,
+    private _publishingState: PublishingStateService
   ) {}
 
   @EventPattern('post', Transport.REDIS)
@@ -18,7 +20,16 @@ export class PostsController {
     const { logger } = Sentry;
     console.log('[WORKER] Processing post job:', data);
     logger.info('Processing post job', { postId: data.id });
-    
+
+    if (await this._publishingState.isPaused()) {
+      // Belt-and-suspenders: queue.pause() is the primary mechanism, but a
+      // job could already have been picked up at the moment of pause. Skip
+      // silently — the post stays in state=QUEUE and the resume flow's
+      // getIntegrationIdsWithMissedPosts() will find and reschedule it.
+      console.log('[WORKER] Publishing paused, skipping post:', data.id);
+      return;
+    }
+
     try {
       const result = await this._postsService.post(data.id);
       console.log('[WORKER] ✅ Successfully processed post:', data.id);

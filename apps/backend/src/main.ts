@@ -15,6 +15,8 @@ import { SubscriptionExceptionFilter } from '@gitroom/backend/services/auth/perm
 import { HttpExceptionFilter } from '@gitroom/nestjs-libraries/services/exception.filter';
 import { ConfigurationChecker } from '@gitroom/helpers/configuration/configuration.checker';
 import { startMcp } from '@gitroom/nestjs-libraries/chat/start.mcp';
+import { BullMqClient } from '@gitroom/nestjs-libraries/bull-mq-transport-new/client';
+import { PublishingStateService } from '@gitroom/nestjs-libraries/redis/publishing.state.service';
 
 async function start() {
   const app = await NestFactory.create(AppModule, {
@@ -54,6 +56,22 @@ async function start() {
   app.useGlobalFilters(new HttpExceptionFilter());
 
   loadSwagger(app);
+
+  // Hard-coded: every restart starts in PAUSED mode so an unattended
+  // docker compose up never causes a burst of belated posts. Mirrors the
+  // workers bootstrap — whichever app comes up first wins, and the Redis
+  // flag + BullMQ pause state survive container restarts.
+  try {
+    const publishingState = app.get(PublishingStateService);
+    const bullClient = app.get(BullMqClient);
+    await publishingState.setPaused(true);
+    await bullClient.getQueue('post').pause();
+    Logger.warn(
+      'Publishing started in PAUSED mode — call POST /publishing/resume to start sending'
+    );
+  } catch (err) {
+    Logger.error('Failed to set startup pause state', err as any);
+  }
 
   const port = process.env.PORT || 3000;
 
