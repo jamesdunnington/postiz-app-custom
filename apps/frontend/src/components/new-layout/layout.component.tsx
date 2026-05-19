@@ -9,6 +9,13 @@ const ModeComponent = dynamic(
     ssr: false,
   }
 );
+const PublishingToggle = dynamic(
+  () =>
+    import('@gitroom/frontend/components/layout/publishing.toggle').then(
+      (m) => m.PublishingToggle
+    ),
+  { ssr: false }
+);
 
 import clsx from 'clsx';
 import dynamic from 'next/dynamic';
@@ -114,6 +121,7 @@ export const LayoutComponent = ({ children }: { children: ReactNode }) => {
                     </div>
                     <div className="flex gap-[20px] text-textItemBlur">
                       <OrganizationSelector />
+                      <PublishingToggle />
                       <div className="hover:text-newTextColor">
                         <ModeComponent />
                       </div>
