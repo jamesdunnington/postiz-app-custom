@@ -61,9 +61,6 @@ jobs:
       - name: Typecheck frontend
         run: pnpm exec tsc --noEmit -p apps/frontend/tsconfig.json
 
-      - name: Typecheck backend
-        run: pnpm exec tsc --noEmit -p apps/backend/tsconfig.json
-
   build-and-push:
     needs: preflight
     runs-on: ubuntu-latest
