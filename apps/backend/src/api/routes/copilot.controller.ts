@@ -56,6 +56,7 @@ export class CopilotController {
       endpoint: '/copilot/chat',
       runtime: new CopilotRuntime(),
       serviceAdapter: new OpenAIAdapter({
+        // @ts-ignore — CopilotKit bundles its own openai type; runtime shape is identical
         openai: openaiClient,
         model: llmConfig.textModel,
       }),
@@ -107,6 +108,7 @@ export class CopilotController {
       endpoint: '/copilot/agent',
       runtime,
       serviceAdapter: new OpenAIAdapter({
+        // @ts-ignore — CopilotKit bundles its own openai type; runtime shape is identical
         openai: openaiClient,
         model: llmConfig.textModel,
       }),
