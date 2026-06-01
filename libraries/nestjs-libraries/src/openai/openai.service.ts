@@ -1,12 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import OpenAI from 'openai';
 import { shuffle } from 'lodash';
 import { zodResponseFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || 'sk-proj-',
-});
+import { LlmConfigService } from '@gitroom/nestjs-libraries/llm/llm-config.service';
 
 const PicturePrompt = z.object({
   prompt: z.string(),
@@ -18,7 +14,14 @@ const VoicePrompt = z.object({
 
 @Injectable()
 export class OpenaiService {
+  constructor(private _llmConfig: LlmConfigService) {}
+
   async generateImage(prompt: string, isUrl: boolean, isVertical = false) {
+    const config = await this._llmConfig.getConfig();
+    if (config.isOpenRouter) {
+      throw new Error('Image generation is not supported with OpenRouter. Switch to OpenAI in Settings.');
+    }
+    const openai = await this._llmConfig.createOpenAIClient();
     const generate = (
       await openai.images.generate({
         prompt,
@@ -32,10 +35,12 @@ export class OpenaiService {
   }
 
   async generatePromptForPicture(prompt: string) {
+    const config = await this._llmConfig.getConfig();
+    const openai = await this._llmConfig.createOpenAIClient();
     return (
       (
         await openai.chat.completions.parse({
-          model: 'gpt-4.1',
+          model: config.textModel,
           messages: [
             {
               role: 'system',
@@ -53,10 +58,12 @@ export class OpenaiService {
   }
 
   async generateVoiceFromText(prompt: string) {
+    const config = await this._llmConfig.getConfig();
+    const openai = await this._llmConfig.createOpenAIClient();
     return (
       (
         await openai.chat.completions.parse({
-          model: 'gpt-4.1',
+          model: config.textModel,
           messages: [
             {
               role: 'system',
@@ -74,6 +81,8 @@ export class OpenaiService {
   }
 
   async generatePosts(content: string) {
+    const config = await this._llmConfig.getConfig();
+    const openai = await this._llmConfig.createOpenAIClient();
     const posts = (
       await Promise.all([
         openai.chat.completions.create({
@@ -90,7 +99,7 @@ export class OpenaiService {
           ],
           n: 5,
           temperature: 1,
-          model: 'gpt-4.1',
+          model: config.textModel,
         }),
         openai.chat.completions.create({
           messages: [
@@ -106,7 +115,7 @@ export class OpenaiService {
           ],
           n: 5,
           temperature: 1,
-          model: 'gpt-4.1',
+          model: config.textModel,
         }),
       ])
     ).flatMap((p) => p.choices);
@@ -131,7 +140,10 @@ export class OpenaiService {
       })
     );
   }
+
   async extractWebsiteText(content: string) {
+    const config = await this._llmConfig.getConfig();
+    const openai = await this._llmConfig.createOpenAIClient();
     const websiteContent = await openai.chat.completions.create({
       messages: [
         {
@@ -144,7 +156,7 @@ export class OpenaiService {
           content,
         },
       ],
-      model: 'gpt-4.1',
+      model: config.textModel,
     });
 
     const { content: articleContent } = websiteContent.choices[0].message;
@@ -161,10 +173,13 @@ export class OpenaiService {
       post: z.string().max(len),
     });
 
+    const config = await this._llmConfig.getConfig();
+    const openai = await this._llmConfig.createOpenAIClient();
+
     const posts =
       (
         await openai.chat.completions.parse({
-          model: 'gpt-4.1',
+          model: config.textModel,
           messages: [
             {
               role: 'system',
@@ -197,7 +212,7 @@ export class OpenaiService {
               return (
                 (
                   await openai.chat.completions.parse({
-                    model: 'gpt-4.1',
+                    model: config.textModel,
                     messages: [
                       {
                         role: 'system',
@@ -227,13 +242,15 @@ export class OpenaiService {
   }
 
   async generateSlidesFromText(text: string) {
+    const config = await this._llmConfig.getConfig();
+    const openai = await this._llmConfig.createOpenAIClient();
     for (let i = 0; i < 3; i++) {
       try {
         const message = `You are an assistant that takes a text and break it into slides, each slide should have an image prompt and voice text to be later used to generate a video and voice, image prompt should capture the essence of the slide and also have a back dark gradient on top, image prompt should not contain text in the picture, generate between 3-5 slides maximum`;
         const parse =
           (
             await openai.chat.completions.parse({
-              model: 'gpt-4.1',
+              model: config.textModel,
               messages: [
                 {
                   role: 'system',

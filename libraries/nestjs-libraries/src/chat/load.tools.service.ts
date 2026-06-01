@@ -1,12 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { Agent } from '@mastra/core/agent';
-import { openai } from '@ai-sdk/openai';
+import { createOpenAI } from '@ai-sdk/openai';
 import { Memory } from '@mastra/memory';
 import { pStore } from '@gitroom/nestjs-libraries/chat/mastra.store';
 import { array, object, string } from 'zod';
 import { ModuleRef } from '@nestjs/core';
 import { toolList } from '@gitroom/nestjs-libraries/chat/tools/tool.list';
 import dayjs from 'dayjs';
+import { LlmConfigService } from '@gitroom/nestjs-libraries/llm/llm-config.service';
 
 export const AgentState = object({
   proverbs: array(string()).default([]),
@@ -19,7 +20,10 @@ const renderArray = (list: string[], show: boolean) => {
 
 @Injectable()
 export class LoadToolsService {
-  constructor(private _moduleRef: ModuleRef) {}
+  constructor(
+    private _moduleRef: ModuleRef,
+    private _llmConfig: LlmConfigService
+  ) {}
 
   async loadTools() {
     return (
@@ -42,6 +46,11 @@ export class LoadToolsService {
 
   async agent() {
     const tools = await this.loadTools();
+    const llmConfig = await this._llmConfig.getConfig();
+    const openaiProvider = createOpenAI({
+      apiKey: llmConfig.apiKey,
+      ...(llmConfig.baseURL ? { baseURL: llmConfig.baseURL } : {}),
+    });
     return new Agent({
       name: 'postiz',
       description: 'Agent that helps manage and schedule social media posts for users',
@@ -85,7 +94,7 @@ export class LoadToolsService {
       )}
 `;
       },
-      model: openai('gpt-4.1'),
+      model: openaiProvider(llmConfig.textModel),
       tools,
       memory: new Memory({
         storage: pStore,

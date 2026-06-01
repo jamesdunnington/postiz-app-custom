@@ -688,6 +688,13 @@ enum From {
   SELLER
 }
 
+model GlobalSetting {
+  key       String   @id
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 enum State {
   QUEUE
   PUBLISHED

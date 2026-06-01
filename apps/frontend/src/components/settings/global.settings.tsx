@@ -19,6 +19,14 @@ const PublishingPauseControl = dynamic(
   { ssr: false }
 );
 
+const LlmSettings = dynamic(
+  () =>
+    import('@gitroom/frontend/components/settings/llm.settings').then(
+      (m) => m.LlmSettings
+    ),
+  { ssr: false }
+);
+
 export const GlobalSettings = () => {
   const t = useT();
   return (
@@ -26,6 +34,7 @@ export const GlobalSettings = () => {
       <h3 className="text-[20px]">{t('global_settings', 'Global Settings')}</h3>
       <MetricComponent />
       <PublishingPauseControl />
+      <LlmSettings />
     </div>
   );
 };

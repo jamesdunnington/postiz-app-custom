@@ -7,13 +7,15 @@ import { OrganizationService } from '@gitroom/nestjs-libraries/database/prisma/o
 import { AddTeamMemberDto } from '@gitroom/nestjs-libraries/dtos/settings/add.team.member.dto';
 import { ApiTags } from '@nestjs/swagger';
 import { AuthorizationActions, Sections } from '@gitroom/backend/services/auth/permissions/permission.exception.class';
+import { GlobalSettingsService } from '@gitroom/nestjs-libraries/database/prisma/global-settings/global-settings.service';
 
 @ApiTags('Settings')
 @Controller('/settings')
 export class SettingsController {
   constructor(
     private _starsService: StarsService,
-    private _organizationService: OrganizationService
+    private _organizationService: OrganizationService,
+    private _globalSettings: GlobalSettingsService
   ) {}
 
   @Get('/github')
@@ -132,5 +134,22 @@ export class SettingsController {
     @Param('id') id: string
   ) {
     return this._organizationService.deleteTeamMember(org, id);
+  }
+
+  @Get('/llm')
+  @CheckPolicies([AuthorizationActions.Create, Sections.ADMIN])
+  getLlmSettings() {
+    return this._globalSettings.getLlmSettingsForDisplay();
+  }
+
+  @Post('/llm')
+  @CheckPolicies([AuthorizationActions.Create, Sections.ADMIN])
+  async saveLlmSettings(
+    @Body('provider') provider: 'openai' | 'openrouter',
+    @Body('apiKey') apiKey: string,
+    @Body('textModel') textModel: string
+  ) {
+    await this._globalSettings.setLlmSettings({ provider, apiKey, textModel });
+    return this._globalSettings.getLlmSettingsForDisplay();
   }
 }

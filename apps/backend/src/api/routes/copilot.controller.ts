@@ -23,6 +23,8 @@ import { Request, Response } from 'express';
 import { RuntimeContext } from '@mastra/core/di';
 import { CheckPolicies } from '@gitroom/backend/services/auth/permissions/permissions.ability';
 import { AuthorizationActions, Sections } from '@gitroom/backend/services/auth/permissions/permission.exception.class';
+import { LlmConfigService } from '@gitroom/nestjs-libraries/llm/llm-config.service';
+import OpenAI from 'openai';
 
 export type ChannelsContext = {
   integrations: string;
@@ -34,23 +36,28 @@ export type ChannelsContext = {
 export class CopilotController {
   constructor(
     private _subscriptionService: SubscriptionService,
-    private _mastraService: MastraService
+    private _mastraService: MastraService,
+    private _llmConfig: LlmConfigService
   ) {}
   @Post('/chat')
-  chatAgent(@Req() req: Request, @Res() res: Response) {
-    if (
-      process.env.OPENAI_API_KEY === undefined ||
-      process.env.OPENAI_API_KEY === ''
-    ) {
-      Logger.warn('OpenAI API key not set, chat functionality will not work');
+  async chatAgent(@Req() req: Request, @Res() res: Response) {
+    const llmConfig = await this._llmConfig.getConfig();
+    if (!llmConfig.apiKey) {
+      Logger.warn('LLM API key not set, chat functionality will not work');
       return;
     }
+
+    const openaiClient = new OpenAI({
+      apiKey: llmConfig.apiKey,
+      ...(llmConfig.baseURL ? { baseURL: llmConfig.baseURL } : {}),
+    });
 
     const copilotRuntimeHandler = copilotRuntimeNodeHttpEndpoint({
       endpoint: '/copilot/chat',
       runtime: new CopilotRuntime(),
       serviceAdapter: new OpenAIAdapter({
-        model: 'gpt-4.1',
+        openai: openaiClient,
+        model: llmConfig.textModel,
       }),
     });
 
@@ -64,13 +71,17 @@ export class CopilotController {
     @Res() res: Response,
     @GetOrgFromRequest() organization: Organization
   ) {
-    if (
-      process.env.OPENAI_API_KEY === undefined ||
-      process.env.OPENAI_API_KEY === ''
-    ) {
-      Logger.warn('OpenAI API key not set, chat functionality will not work');
+    const llmConfig = await this._llmConfig.getConfig();
+    if (!llmConfig.apiKey) {
+      Logger.warn('LLM API key not set, chat functionality will not work');
       return;
     }
+
+    const openaiClient = new OpenAI({
+      apiKey: llmConfig.apiKey,
+      ...(llmConfig.baseURL ? { baseURL: llmConfig.baseURL } : {}),
+    });
+
     const mastra = await this._mastraService.mastra();
     const runtimeContext = new RuntimeContext<ChannelsContext>();
     runtimeContext.set(
@@ -95,9 +106,9 @@ export class CopilotController {
     const copilotRuntimeHandler = copilotRuntimeNextJSAppRouterEndpoint({
       endpoint: '/copilot/agent',
       runtime,
-      // properties: req.body.variables.properties,
       serviceAdapter: new OpenAIAdapter({
-        model: 'gpt-4.1',
+        openai: openaiClient,
+        model: llmConfig.textModel,
       }),
     });
 

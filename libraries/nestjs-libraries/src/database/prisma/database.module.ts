@@ -42,6 +42,9 @@ import { ThirdPartyService } from '@gitroom/nestjs-libraries/database/prisma/thi
 import { VideoManager } from '@gitroom/nestjs-libraries/videos/video.manager';
 import { FalService } from '@gitroom/nestjs-libraries/openai/fal.service';
 import { PublishingStateService } from '@gitroom/nestjs-libraries/redis/publishing.state.service';
+import { GlobalSettingsRepository } from '@gitroom/nestjs-libraries/database/prisma/global-settings/global-settings.repository';
+import { GlobalSettingsService } from '@gitroom/nestjs-libraries/database/prisma/global-settings/global-settings.service';
+import { LlmConfigService } from '@gitroom/nestjs-libraries/llm/llm-config.service';
 
 @Global()
 @Module({
@@ -93,6 +96,9 @@ import { PublishingStateService } from '@gitroom/nestjs-libraries/redis/publishi
     ThirdPartyService,
     VideoManager,
     PublishingStateService,
+    GlobalSettingsRepository,
+    GlobalSettingsService,
+    LlmConfigService,
   ],
   get exports() {
     return this.providers;
