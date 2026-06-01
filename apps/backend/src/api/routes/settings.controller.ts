@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
 import { GetOrgFromRequest } from '@gitroom/nestjs-libraries/user/org.from.request';
 import { Organization } from '@prisma/client';
 import { StarsService } from '@gitroom/nestjs-libraries/database/prisma/stars/stars.service';
@@ -151,5 +151,42 @@ export class SettingsController {
   ) {
     await this._globalSettings.setLlmSettings({ provider, apiKey, textModel });
     return this._globalSettings.getLlmSettingsForDisplay();
+  }
+
+  @Get('/llm/models')
+  @CheckPolicies([AuthorizationActions.Create, Sections.ADMIN])
+  async getLlmModels(@Query('provider') queryProvider?: string) {
+    const settings = await this._globalSettings.getLlmSettings();
+    const provider = queryProvider || settings.provider;
+    if (provider === 'openrouter') {
+      const res = await fetch('https://openrouter.ai/api/v1/models', {
+        headers: settings.apiKey
+          ? { Authorization: `Bearer ${settings.apiKey}` }
+          : {},
+      });
+      if (!res.ok) return { models: [] };
+      const data = (await res.json()) as {
+        data: { id: string; name: string }[];
+      };
+      return {
+        models: data.data
+          .map((m) => ({ id: m.id, name: m.name || m.id }))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      };
+    }
+    // OpenAI common chat models (static — their /models endpoint includes many non-chat models)
+    return {
+      models: [
+        { id: 'gpt-4.1', name: 'GPT-4.1' },
+        { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini' },
+        { id: 'gpt-4.1-nano', name: 'GPT-4.1 Nano' },
+        { id: 'gpt-4o', name: 'GPT-4o' },
+        { id: 'gpt-4o-mini', name: 'GPT-4o Mini' },
+        { id: 'gpt-4-turbo', name: 'GPT-4 Turbo' },
+        { id: 'o1', name: 'o1' },
+        { id: 'o1-mini', name: 'o1 Mini' },
+        { id: 'o3-mini', name: 'o3 Mini' },
+      ],
+    };
   }
 }
