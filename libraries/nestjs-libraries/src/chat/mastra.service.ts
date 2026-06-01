@@ -6,21 +6,18 @@ import { LoadToolsService } from '@gitroom/nestjs-libraries/chat/load.tools.serv
 
 @Injectable()
 export class MastraService {
-  static mastra: Mastra;
   constructor(private _loadToolsService: LoadToolsService) {}
-  async mastra() {
-    MastraService.mastra =
-      MastraService.mastra ||
-      new Mastra({
-        storage: pStore,
-        agents: {
-          postiz: await this._loadToolsService.agent(),
-        },
-        logger: new ConsoleLogger({
-          level: 'info',
-        }),
-      });
 
-    return MastraService.mastra;
+  // Recreated per-request so LLM settings changes take effect immediately
+  async mastra() {
+    return new Mastra({
+      storage: pStore,
+      agents: {
+        postiz: await this._loadToolsService.agent(),
+      },
+      logger: new ConsoleLogger({
+        level: 'info',
+      }),
+    });
   }
 }
