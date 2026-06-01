@@ -179,7 +179,7 @@ export const LlmSettings: React.FC = () => {
                   backgroundColor: 'var(--color-input)',
                   borderColor: 'var(--color-tableBorder)',
                 },
-                option: {
+                item: {
                   fontSize: '13px',
                   color: 'var(--color-textColor)',
                 },
