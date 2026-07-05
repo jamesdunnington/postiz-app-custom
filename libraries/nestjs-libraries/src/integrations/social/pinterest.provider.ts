@@ -444,11 +444,10 @@ export class PinterestProvider
         // Mark the latest 2 days as tentative (dotted lines on Pinterest)
         const isTentative = item.date === today || item.date === yesterday;
 
-        // Save Rate is provided directly by Pinterest's API as a decimal (e.g. 0.18 = 18%)
-        if (typeof item.metrics.SAVE_RATE !== 'undefined') {
+        if (typeof item.metrics.IMPRESSION !== 'undefined') {
           acc[0].data.push({
             date: item.date,
-            total: (item.metrics.SAVE_RATE * 100).toFixed(2),
+            total: item.metrics.IMPRESSION,
             tentative: isTentative,
           });
         }
@@ -461,10 +460,11 @@ export class PinterestProvider
           });
         }
 
-        if (typeof item.metrics.IMPRESSION !== 'undefined') {
+        // Save Rate is provided directly by Pinterest's API as a decimal (e.g. 0.18 = 18%)
+        if (typeof item.metrics.SAVE_RATE !== 'undefined') {
           acc[2].data.push({
             date: item.date,
-            total: item.metrics.IMPRESSION,
+            total: (item.metrics.SAVE_RATE * 100).toFixed(2),
             tentative: isTentative,
           });
         }
@@ -496,9 +496,9 @@ export class PinterestProvider
         return acc;
       },
       [
-        { label: 'Save Rate', average: true, data: [] as any[] },
-        { label: 'Outbound Clicks', data: [] as any[] },
         { label: 'Impressions', data: [] as any[] },
+        { label: 'Outbound Clicks', data: [] as any[] },
+        { label: 'Save Rate', average: true, data: [] as any[] },
         { label: 'Pin Clicks', data: [] as any[] },
         { label: 'Engagement', data: [] as any[] },
         { label: 'Saves', data: [] as any[] },
@@ -514,18 +514,18 @@ export class PinterestProvider
       (acc: any, item: any) => {
         const isTentative = item.date === today || item.date === yesterday;
 
-        if (typeof item.metrics.SAVE_RATE !== 'undefined') {
-          acc[0].data.push({
-            date: item.date,
-            total: (item.metrics.SAVE_RATE * 100).toFixed(2),
-            tentative: isTentative,
-          });
+        if (typeof item.metrics.IMPRESSION !== 'undefined') {
+          acc[0].data.push({ date: item.date, total: item.metrics.IMPRESSION, tentative: isTentative });
         }
         if (typeof item.metrics.OUTBOUND_CLICK !== 'undefined') {
           acc[1].data.push({ date: item.date, total: item.metrics.OUTBOUND_CLICK, tentative: isTentative });
         }
-        if (typeof item.metrics.IMPRESSION !== 'undefined') {
-          acc[2].data.push({ date: item.date, total: item.metrics.IMPRESSION, tentative: isTentative });
+        if (typeof item.metrics.SAVE_RATE !== 'undefined') {
+          acc[2].data.push({
+            date: item.date,
+            total: (item.metrics.SAVE_RATE * 100).toFixed(2),
+            tentative: isTentative,
+          });
         }
         if (typeof item.metrics.PIN_CLICK !== 'undefined') {
           acc[3].data.push({ date: item.date, total: item.metrics.PIN_CLICK, tentative: isTentative });
@@ -540,9 +540,9 @@ export class PinterestProvider
         return acc;
       },
       [
-        { label: 'Save Rate', average: true, data: [] as any[] },
-        { label: 'Outbound Clicks', data: [] as any[] },
         { label: 'Impressions', data: [] as any[] },
+        { label: 'Outbound Clicks', data: [] as any[] },
+        { label: 'Save Rate', average: true, data: [] as any[] },
         { label: 'Pin Clicks', data: [] as any[] },
         { label: 'Engagement', data: [] as any[] },
         { label: 'Saves', data: [] as any[] },
