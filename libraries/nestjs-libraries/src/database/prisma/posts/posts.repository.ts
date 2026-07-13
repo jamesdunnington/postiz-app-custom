@@ -1745,6 +1745,17 @@ export class PostsRepository {
     });
   }
 
+  async getPostByMediaId(orgId: string, mediaId: string) {
+    return this._post.model.post.findFirst({
+      where: {
+        organizationId: orgId,
+        deletedAt: null,
+        image: { contains: mediaId },
+      },
+      select: { id: true, image: true },
+    });
+  }
+
   async getAllQueuedPostsForSync() {
     return this._post.model.post.findMany({
       where: {

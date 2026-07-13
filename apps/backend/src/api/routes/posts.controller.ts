@@ -128,6 +128,14 @@ export class PostsController {
     return this._postsService.getOldPosts(org.id, date);
   }
 
+  @Get('/by-media/:id')
+  getPostByMedia(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string
+  ) {
+    return this._postsService.getPostIdByMediaId(org.id, id);
+  }
+
   @Get('/:id')
   getPost(@GetOrgFromRequest() org: Organization, @Param('id') id: string) {
     return this._postsService.getPost(org.id, id);
