@@ -292,6 +292,18 @@ export class PostsService {
     return this._postRepository.getOldPosts(orgId, date);
   }
 
+  async getPostIdByMediaId(orgId: string, mediaId: string) {
+    const post = await this._postRepository.getPostByMediaId(orgId, mediaId);
+    if (!post) {
+      return { postId: null };
+    }
+
+    const images = JSON.parse(post.image || '[]');
+    return {
+      postId: images.some((img: any) => img.id === mediaId) ? post.id : null,
+    };
+  }
+
   async post(id: string) {
     const { logger } = Sentry;
     console.log(`[PostsService] Starting post processing for ID: ${id}`);

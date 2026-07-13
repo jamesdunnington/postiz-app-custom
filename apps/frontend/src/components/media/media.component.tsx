@@ -37,6 +37,13 @@ import {
 import { useLaunchStore } from '@gitroom/frontend/components/new-launch/store';
 import { AiVideo } from '@gitroom/frontend/components/launches/ai.video';
 import { useModals } from '@gitroom/frontend/components/layout/new-modal';
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import { ExistingDataContextProvider } from '@gitroom/frontend/components/launches/helpers/use.existing.data';
+import { AddEditModal } from '@gitroom/frontend/components/new-launch/add.edit.modal';
+import { useIntegrationList } from '@gitroom/frontend/components/launches/helpers/use.integration.list';
+
+dayjs.extend(utc);
 const Polonto = dynamic(
   () => import('@gitroom/frontend/components/launches/polonto')
 );
@@ -205,6 +212,8 @@ export const MediaBox: FC<{
   const [selectedMedia, setSelectedMedia] = useState<Media[]>([]);
   const [recovering, setRecovering] = useState(false);
   const ref = useRef<any>(null);
+  const modals = useModals();
+  const { data: integrations } = useIntegrationList();
 
   useEffect(() => {
     setActivateExitButton(false);
@@ -236,6 +245,54 @@ export const MediaBox: FC<{
       );
     },
     [selectedMedia]
+  );
+
+  const openLinkedPost = useCallback(
+    (media: Media) => async () => {
+      const { postId } = await (
+        await fetch(`/posts/by-media/${media.id}`)
+      ).json();
+
+      if (!postId) {
+        return;
+      }
+
+      const data = await (await fetch(`/posts/${postId}`)).json();
+      const publishDate = dayjs.utc(data.posts[0].publishDate).local();
+
+      modals.openModal({
+        id: 'add-edit-modal',
+        closeOnClickOutside: false,
+        removeLayout: true,
+        closeOnEscape: false,
+        withCloseButton: false,
+        askClose: true,
+        classNames: {
+          modal: 'w-[100%] max-w-[1400px] text-textColor',
+        },
+        children: (
+          <ExistingDataContextProvider value={data}>
+            <AddEditModal
+              allIntegrations={(integrations || []).map((p: any) => ({
+                ...p,
+              }))}
+              reopenModal={openLinkedPost(media)}
+              mutate={() => {}}
+              integrations={(integrations || [])
+                .filter((f: any) => f.id === data.integration)
+                .map((p: any) => ({
+                  ...p,
+                  picture: data.integrationPicture,
+                }))}
+              date={publishDate}
+            />
+          </ExistingDataContextProvider>
+        ),
+        size: '80%',
+        title: ``,
+      });
+    },
+    [integrations]
   );
 
   const addNewMedia = useCallback(
@@ -548,7 +605,11 @@ export const MediaBox: FC<{
                         ? 'border-4 border-forth'
                         : 'border-tableBorder border-2'
                     )}
-                    onClick={props.standalone ? () => {} : setNewMedia(media)}
+                    onClick={
+                      props.standalone
+                        ? openLinkedPost(media)
+                        : setNewMedia(media)
+                    }
                   >
                     <div
                       onClick={removeItem(media)}
