@@ -14,7 +14,11 @@
       "Bash(grep -E '\\\\.\\(tsx|ts\\)$')",
       "Bash(Get-ChildItem -Path \"d:\\\\Vibe Coding\\\\postiz-app\\\\apps\\\\frontend\\\\src\\\\app\\\\\\(app\\)\\\\auth\\\\\" -Recurse | Select-Object FullName)",
       "Bash(xargs sed -i \"s/? 'Postiz' : 'Gitroom'/? 'TheContentWarrior' : 'JDCO'/g; s/? 'Content Warrior' : 'Gitroom'/? 'TheContentWarrior' : 'JDCO'/g; s/isGeneral ? 'Content Warrior' : 'Gitroom'/isGeneral ? 'TheContentWarrior' : 'JDCO'/g\")",
-      "Bash(xargs sed -i \"s/: 'Gitroom'} /: 'JDCO'} /g; s/: 'Gitroom'\\\\`/: 'JDCO'\\\\`/g; s/'Gitroom'$/'JDCO'/g\")"
+      "Bash(xargs sed -i \"s/: 'Gitroom'} /: 'JDCO'} /g; s/: 'Gitroom'\\\\`/: 'JDCO'\\\\`/g; s/'Gitroom'$/'JDCO'/g\")",
+      "Bash(xargs grep -l \"queue.add\\\\|emit\\\\|job\\\\|BullMQ\")",
+      "Bash(xargs grep -l \"isPublishing\\\\|publishing.*pause\\\\|paused.*publish\")",
+      "Bash(xargs grep -l \"pauseAllPublishing\\\\|resumeAllPublishing\")",
+      "Bash(xargs grep -l \"analytics\")"
     ]
   },
   "enableAllProjectMcpServers": true,
