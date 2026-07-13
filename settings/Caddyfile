@@ -1,0 +1,85 @@
+n8n.thecontentwarrior.work {
+    reverse_proxy n8n-n8n-1:5678
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+    }
+}
+
+postiz.thecontentwarrior.work {
+    reverse_proxy postiz:5000
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+    }
+}
+
+privacy.thecontentwarrior.work {
+    root * /srv/privacy
+    file_server
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+    }
+}
+
+postgres.thecontentwarrior.work {
+    reverse_proxy pinterest-postgres:5432
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+    }
+}
+
+newsletter.thecontentwarrior.work {
+    reverse_proxy keila:4000
+}
+
+mcp.thecontentwarrior.work {
+    reverse_proxy keila-mcp:3150
+}
+
+daybook.thecontentwarrior.work {
+    reverse_proxy daybook-app:3500
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+    }
+}
+
+mcpdaybook.thecontentwarrior.work {
+    reverse_proxy daybook-mcp:3501
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+    }
+}
+
+# Pinterest CSV Scheduler
+schedule.thecontentwarrior.work {
+    # Frontend - serve static files for all non-API routes
+    @frontend {
+        not path /api/*
+    }
+    reverse_proxy @frontend scheduler-frontend:80 {
+        header_up Host {host}
+        header_up X-Real-IP {remote}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    # Backend API - proxy all /api/* requests
+    reverse_proxy /api/* scheduler-backend:3001 {
+        header_up Host {host}
+        header_up X-Real-IP {remote}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+        X-Frame-Options "SAMEORIGIN"
+        X-XSS-Protection "1; mode=block"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+
+    # Gzip compression
+    encode gzip
+}
