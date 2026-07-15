@@ -702,6 +702,32 @@ export class IntegrationsController {
     };
   }
 
+  @Get('/unused-media')
+  async unusedMedia(@GetOrgFromRequest() org: Organization) {
+    const unused = await this._integrationService.getUnusedMedia(org.id);
+    return { media: unused };
+  }
+
+  @Post('/delete-unused-media')
+  async deleteUnusedMedia(
+    @GetOrgFromRequest() org: Organization,
+    @Body('ids') ids: string[]
+  ) {
+    const result = await this._integrationService.deleteUnusedMedia(
+      org.id,
+      ids || []
+    );
+    return {
+      success: true,
+      deleted: result.deleted,
+      imagesDeleted: result.imagesDeleted,
+      message:
+        result.deleted > 0
+          ? `Deleted ${result.deleted} unused media items`
+          : 'No unused media were deleted',
+    };
+  }
+
   @Post('/recover-media')
   async recoverMedia(@GetOrgFromRequest() org: Organization) {
     const result = await this._integrationService.recoverMediaFromPosts(org.id);

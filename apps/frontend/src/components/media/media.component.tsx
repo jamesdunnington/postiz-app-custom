@@ -211,6 +211,9 @@ export const MediaBox: FC<{
   const [pages, setPages] = useState(0);
   const [selectedMedia, setSelectedMedia] = useState<Media[]>([]);
   const [recovering, setRecovering] = useState(false);
+  const [checkingUnused, setCheckingUnused] = useState(false);
+  const [deletingUnused, setDeletingUnused] = useState(false);
+  const [unusedIds, setUnusedIds] = useState<Set<string> | null>(null);
   const ref = useRef<any>(null);
   const modals = useModals();
   const { data: integrations } = useIntegrationList();
@@ -419,6 +422,53 @@ export const MediaBox: FC<{
     }
   }, [fetch, mutate]);
 
+  const findUnusedMedia = useCallback(async () => {
+    setCheckingUnused(true);
+    try {
+      const res = await (await fetch('/integrations/unused-media')).json();
+      const ids = new Set<string>((res.media || []).map((m: Media) => m.id));
+      setUnusedIds(ids);
+      alert(
+        ids.size > 0
+          ? `${ids.size} media item(s) are not linked to any post. They are highlighted below.`
+          : 'Every media item is linked to a post. Nothing to clean up.'
+      );
+    } finally {
+      setCheckingUnused(false);
+    }
+  }, [fetch]);
+
+  const deleteUnusedMedia = useCallback(async () => {
+    if (!unusedIds || unusedIds.size === 0) {
+      return;
+    }
+    if (
+      !(await deleteDialog(
+        t(
+          'delete_unused_media_confirm',
+          `Delete ${unusedIds.size} media item(s) not linked to any post? This cannot be undone.`
+        )
+      ))
+    ) {
+      return;
+    }
+    setDeletingUnused(true);
+    try {
+      const res = await (
+        await fetch('/integrations/delete-unused-media', {
+          method: 'POST',
+          body: JSON.stringify({ ids: Array.from(unusedIds) }),
+        })
+      ).json();
+      setUnusedIds(null);
+      setPage(0);
+      await mutate();
+      alert(res.message);
+    } finally {
+      setDeletingUnused(false);
+    }
+  }, [fetch, mutate, unusedIds]);
+
   const refNew = useRef(null);
 
   useEffect(() => {
@@ -521,6 +571,27 @@ export const MediaBox: FC<{
                       >
                         {recovering ? 'Recovering...' : 'Recover Missing'}
                       </Button>
+                      <Button
+                        onClick={findUnusedMedia}
+                        secondary={true}
+                        disabled={checkingUnused}
+                        className="!text-xs !px-2 !py-1 !h-auto"
+                        title="Find media not linked to any post"
+                      >
+                        {checkingUnused ? 'Checking...' : 'Find Unused'}
+                      </Button>
+                      {!!unusedIds?.size && (
+                        <Button
+                          onClick={deleteUnusedMedia}
+                          disabled={deletingUnused}
+                          className="!text-xs !px-2 !py-1 !h-auto !bg-red-700"
+                          title="Delete media not linked to any post"
+                        >
+                          {deletingUnused
+                            ? 'Deleting...'
+                            : `Delete Unused (${unusedIds.size})`}
+                        </Button>
+                      )}
                       <MultipartFileUploader
                         uppRef={ref}
                         onUploadSuccess={finishUpload}
@@ -603,8 +674,15 @@ export const MediaBox: FC<{
                       'w-[120px] h-[120px] flex select-none relative cursor-pointer',
                       selectedMedia.find((p) => p.id === media.id)
                         ? 'border-4 border-forth'
+                        : unusedIds?.has(media.id)
+                        ? 'border-4 border-red-600'
                         : 'border-tableBorder border-2'
                     )}
+                    title={
+                      unusedIds?.has(media.id)
+                        ? 'Not linked to any post'
+                        : undefined
+                    }
                     onClick={
                       props.standalone
                         ? openLinkedPost(media)

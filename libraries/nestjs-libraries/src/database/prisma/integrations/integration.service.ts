@@ -1649,6 +1649,102 @@ export class IntegrationService {
     }
   }
 
+  private async getUsedMediaPaths(orgId: string) {
+    const activePosts = await this._postsRepository.getActivePostImages(orgId);
+    const usedPaths = new Set<string>();
+    for (const post of activePosts) {
+      if (post.image) {
+        try {
+          const images = JSON.parse(post.image);
+          if (Array.isArray(images)) {
+            for (const img of images) {
+              if (img.path) usedPaths.add(img.path);
+            }
+          }
+        } catch {
+          // skip malformed image JSON
+        }
+      }
+    }
+    return usedPaths;
+  }
+
+  async getUnusedMedia(orgId: string) {
+    const { logger } = Sentry;
+    try {
+      const [allMedia, usedPaths] = await Promise.all([
+        this._mediaRepository.getActiveMediaForOrg(orgId),
+        this.getUsedMediaPaths(orgId),
+      ]);
+
+      return allMedia.filter((media) => !usedPaths.has(media.path));
+    } catch (err) {
+      Sentry.captureException(err, {
+        extra: { context: 'getUnusedMedia failed', orgId },
+      });
+      logger.error(
+        `Error finding unused media: ${err instanceof Error ? err.message : String(err)}`
+      );
+      return [];
+    }
+  }
+
+  async deleteUnusedMedia(orgId: string, ids: string[]) {
+    const { logger } = Sentry;
+    console.log('[DELETE UNUSED MEDIA] Starting removal of unused media...');
+
+    try {
+      if (!ids?.length) {
+        return { deleted: 0, imagesDeleted: 0 };
+      }
+
+      // Re-check usage right before deleting, so nothing gets removed if it was
+      // attached to a post in the time between listing and confirming deletion.
+      const [candidates, usedPaths] = await Promise.all([
+        this._mediaRepository.getMediaByIdsForOrg(orgId, ids),
+        this.getUsedMediaPaths(orgId),
+      ]);
+      const safeToDelete = candidates.filter(
+        (media) => !usedPaths.has(media.path)
+      );
+
+      let imagesDeleted = 0;
+      for (const media of safeToDelete) {
+        try {
+          await this.storage.removeFile(media.path);
+          imagesDeleted++;
+        } catch (err) {
+          console.error(
+            `[DELETE UNUSED MEDIA] Failed to delete image from storage: ${media.path}`,
+            err
+          );
+        }
+      }
+
+      await this._mediaRepository.softDeleteMediaByIds(
+        safeToDelete.map((media) => media.id)
+      );
+
+      console.log(
+        `[DELETE UNUSED MEDIA] ✅ Complete: Removed ${safeToDelete.length} media records, deleted ${imagesDeleted} images from storage`
+      );
+      logger.info('Delete unused media complete', {
+        deleted: safeToDelete.length,
+        imagesDeleted,
+      });
+      return { deleted: safeToDelete.length, imagesDeleted };
+    } catch (err) {
+      Sentry.captureException(err, {
+        extra: { context: 'deleteUnusedMedia failed', orgId },
+      });
+      logger.error(
+        `Error deleting unused media: ${err instanceof Error ? err.message : String(err)}`
+      );
+      console.error('[DELETE UNUSED MEDIA] ❌ Error:', err);
+      return { deleted: 0, imagesDeleted: 0 };
+    }
+  }
+
   async checkIntegrationConnection(orgId: string, integrationId: string) {
     const { logger } = Sentry;
     
