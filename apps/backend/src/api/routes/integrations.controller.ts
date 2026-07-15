@@ -173,6 +173,12 @@ export class IntegrationsController {
     return this._integrationService.updateNameAndUrl(id, name, url);
   }
 
+  @Get('/unused-media')
+  async unusedMedia(@GetOrgFromRequest() org: Organization) {
+    const unused = await this._integrationService.getUnusedMedia(org.id);
+    return { media: unused };
+  }
+
   @Get('/:id')
   getSingleIntegration(
     @Param('id') id: string,
@@ -700,12 +706,6 @@ export class IntegrationsController {
           ? `Removed ${result.removed} published posts and ${result.imagesDeleted} images`
           : 'No published posts found',
     };
-  }
-
-  @Get('/unused-media')
-  async unusedMedia(@GetOrgFromRequest() org: Organization) {
-    const unused = await this._integrationService.getUnusedMedia(org.id);
-    return { media: unused };
   }
 
   @Post('/delete-unused-media')
