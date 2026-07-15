@@ -467,7 +467,7 @@ export const MediaBox: FC<{
     } finally {
       setDeletingUnused(false);
     }
-  }, [fetch, mutate, unusedIds, t]);
+  }, [fetch, mutate, unusedIds]);
 
   const refNew = useRef(null);
 
