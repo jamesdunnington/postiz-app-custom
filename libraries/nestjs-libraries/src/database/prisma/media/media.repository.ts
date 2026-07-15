@@ -34,6 +34,47 @@ export class MediaRepository {
   }
 
   /**
+   * Get all active (non-deleted) media records for a single organization
+   */
+  async getActiveMediaForOrg(org: string) {
+    return this._media.model.media.findMany({
+      where: {
+        organizationId: org,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        name: true,
+        path: true,
+        thumbnail: true,
+        fileSize: true,
+        createdAt: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+  }
+
+  /**
+   * Get active (non-deleted) media records for an org, restricted to a set of IDs
+   */
+  async getMediaByIdsForOrg(org: string, ids: string[]) {
+    if (ids.length === 0) return [];
+    return this._media.model.media.findMany({
+      where: {
+        organizationId: org,
+        id: { in: ids },
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        path: true,
+      },
+    });
+  }
+
+  /**
    * Soft-delete media records by IDs (for orphaned files)
    */
   async softDeleteMediaByIds(ids: string[]) {
