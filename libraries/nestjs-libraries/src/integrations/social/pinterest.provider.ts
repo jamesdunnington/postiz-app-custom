@@ -604,15 +604,16 @@ export class PinterestProvider
       ).json();
 
       if (topPinsResponse?.pins) {
-        // The top_pins endpoint returns metrics but often lacks title/image.
-        // Fetch full pin details for each pin to get title and image.
+        // The top_pins endpoint returns metrics only (no title/image/destination link).
+        // Fetch full pin details for each pin to get those.
         const pinDetailsPromises = topPinsResponse.pins.map(async (pin: any) => {
           const pinId = pin.pin_id || pin.id;
           let title = pin.title || '';
           let imageUrl = pin.media?.images?.['150x150']?.url || pin.image_medium_url || '';
           let description = pin.description || '';
+          let destinationUrl = pin.link || '';
 
-          if (pinId && (!title || !imageUrl)) {
+          if (pinId) {
             try {
               const pinDetail = await (
                 await fetch(`https://api.pinterest.com/v5/pins/${pinId}`, {
@@ -627,6 +628,7 @@ export class PinterestProvider
                 || pinDetail.media?.images?.['400x300']?.url
                 || pinDetail.media?.images?.originals?.url
                 || '';
+              destinationUrl = destinationUrl || pinDetail.link || '';
             } catch {
               // If pin detail fetch fails, use what we have
             }
@@ -637,6 +639,7 @@ export class PinterestProvider
             title: title || description?.substring(0, 60) || '',
             imageUrl,
             url: pinId ? `https://www.pinterest.com/pin/${pinId}` : '',
+            destinationUrl,
             impressions: pin.metrics?.IMPRESSION || 0,
             pinClicks: pin.metrics?.PIN_CLICK || 0,
             outboundClicks: pin.metrics?.OUTBOUND_CLICK || 0,

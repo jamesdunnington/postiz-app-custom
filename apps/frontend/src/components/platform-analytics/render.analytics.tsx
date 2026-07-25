@@ -9,7 +9,7 @@ import { useT } from '@gitroom/react/translation/get.transation.service.client';
 
 const ACCENT_COLOR = '#8b5cf6';
 
-type PinSortField = 'impressions' | 'outboundClicks' | 'ctr';
+type PinSortField = 'impressions' | 'outboundClicks' | 'saves' | 'ctr';
 
 export const RenderAnalytics: FC<{
   integration: Integration & { identifier?: string };
@@ -374,6 +374,7 @@ export const RenderAnalytics: FC<{
                     [
                       ['impressions', t('impressions', 'Impressions')],
                       ['outboundClicks', t('outbound_clicks', 'Outbound Clicks')],
+                      ['saves', t('saves', 'Saves')],
                       ['ctr', t('click_through_rate', 'Click Through Rate')],
                     ] as [PinSortField, string][]
                   ).map(([field, label]) => (
@@ -398,14 +399,14 @@ export const RenderAnalytics: FC<{
                   >
                     <td className="px-3 py-3 text-gray-400">{i + 1}</td>
                     <td className="px-3 py-3 max-w-[220px]">
-                      {pin.url ? (
+                      {pin.destinationUrl || pin.url ? (
                         <a
-                          href={pin.url}
+                          href={pin.destinationUrl || pin.url}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-purple-400 hover:underline truncate block"
                         >
-                          {pin.url}
+                          {pin.destinationUrl || pin.url}
                         </a>
                       ) : (
                         <span className="text-gray-500">
@@ -427,6 +428,9 @@ export const RenderAnalytics: FC<{
                     </td>
                     <td className="px-3 py-3 text-right whitespace-nowrap">
                       {formatNumber(pin.outboundClicks || 0)}
+                    </td>
+                    <td className="px-3 py-3 text-right whitespace-nowrap">
+                      {formatNumber(pin.saves || 0)}
                     </td>
                     <td className="px-3 py-3 text-right whitespace-nowrap">
                       {pin.ctr.toFixed(2)}%
