@@ -639,6 +639,7 @@ export class PinterestProvider
             url: pinId ? `https://www.pinterest.com/pin/${pinId}` : '',
             impressions: pin.metrics?.IMPRESSION || 0,
             pinClicks: pin.metrics?.PIN_CLICK || 0,
+            outboundClicks: pin.metrics?.OUTBOUND_CLICK || 0,
             saves: pin.metrics?.SAVE || 0,
           };
         });
