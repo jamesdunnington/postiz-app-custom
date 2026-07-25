@@ -6,12 +6,22 @@ import { TotalList } from '@gitroom/frontend/components/analytics/stars.and.fork
 import useCookie from 'react-use-cookie';
 import dayjs from 'dayjs';
 
+const hexToRgba = (hex: string, alpha: number) => {
+  const bigint = parseInt(hex.replace('#', ''), 16);
+  const r = (bigint >> 16) & 255;
+  const g = (bigint >> 8) & 255;
+  const b = bigint & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
 export const ChartSocial: FC<{
   data: TotalList[];
   showInOverview?: boolean;
+  color?: string;
 }> = (props) => {
-  const { data, showInOverview = false } = props;
+  const { data, showInOverview = false, color } = props;
   const [mode] = useCookie('mode', 'dark');
+  const lineColor = color || (mode === 'dark' ? '#fff' : '#000');
   
   // Use all data points for day-by-day display
   const list = useMemo(() => data, [data]);
@@ -51,8 +61,8 @@ export const ChartSocial: FC<{
     const gradient = ref.current
       .getContext('2d')
       .createLinearGradient(0, 0, 0, ref.current.height);
-    gradient.addColorStop(0, 'rgb(90,46,203)');
-    gradient.addColorStop(1, 'rgb(65, 38, 136, 1)');
+    gradient.addColorStop(0, hexToRgba(lineColor, 0.5));
+    gradient.addColorStop(1, hexToRgba(lineColor, 0));
     
     chart.current = new DrawChart(ref.current!, {
       type: 'line',
@@ -115,7 +125,7 @@ export const ChartSocial: FC<{
         labels: formattedLabels,
         datasets: [
           {
-            borderColor: mode === 'dark' ? '#fff' : '#000',
+            borderColor: lineColor,
             borderWidth: 2,
             // @ts-ignore
             label: 'Total',
@@ -124,7 +134,7 @@ export const ChartSocial: FC<{
             tension: 0.4, // Smooth curves like Pinterest
             pointRadius: showInOverview ? 0 : 3,
             pointHoverRadius: showInOverview ? 0 : 5,
-            pointBackgroundColor: mode === 'dark' ? '#fff' : '#000',
+            pointBackgroundColor: lineColor,
             // @ts-ignore
             data: list.map((row) => row.total),
             // @ts-ignore
@@ -143,7 +153,7 @@ export const ChartSocial: FC<{
     return () => {
       chart?.current?.destroy();
     };
-  }, [data, mode, formattedLabels, showInOverview]);
+  }, [data, mode, formattedLabels, showInOverview, lineColor]);
   
   return <canvas className="w-full h-full" ref={ref} />;
 };

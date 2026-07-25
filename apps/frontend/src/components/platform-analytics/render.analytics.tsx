@@ -1,11 +1,20 @@
 import { FC, useCallback, useMemo, useState } from 'react';
 import { Integration } from '@prisma/client';
 import useSWR from 'swr';
+import clsx from 'clsx';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { ChartSocial } from '@gitroom/frontend/components/analytics/chart-social';
 import { LoadingComponent } from '@gitroom/frontend/components/layout/loading';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
-import { Select } from '@gitroom/react/form/select';
+
+const ACCENT_COLOR = '#8b5cf6';
+
+type PinSortField =
+  | 'impressions'
+  | 'pinClicks'
+  | 'outboundClicks'
+  | 'saves'
+  | 'ctr';
 
 export const RenderAnalytics: FC<{
   integration: Integration & { identifier?: string };
@@ -15,9 +24,10 @@ export const RenderAnalytics: FC<{
 }> = (props) => {
   const { integration, date, customStartDate, customEndDate } = props;
   const [loading, setLoading] = useState(true);
-  const [selectedMetric1, setSelectedMetric1] = useState<number>(0);
-  const [selectedMetric2, setSelectedMetric2] = useState<number>(1);
+  const [selectedMetric, setSelectedMetric] = useState<number>(0);
   const [exporting, setExporting] = useState(false);
+  const [pinSortField, setPinSortField] = useState<PinSortField>('impressions');
+  const [pinSortDir, setPinSortDir] = useState<'asc' | 'desc'>('desc');
   const fetch = useFetch();
 
   const queryString = useMemo(() => {
@@ -74,6 +84,31 @@ export const RenderAnalytics: FC<{
       refreshWhenOffline: false,
       revalidateOnMount: true,
     }
+  );
+
+  const sortedTopPins = useMemo(() => {
+    const pins = (pinterestTops?.topPins || []).map((pin: any) => ({
+      ...pin,
+      ctr: pin.impressions
+        ? ((pin.outboundClicks || 0) / pin.impressions) * 100
+        : 0,
+    }));
+    return [...pins].sort((a: any, b: any) => {
+      const diff = (a[pinSortField] || 0) - (b[pinSortField] || 0);
+      return pinSortDir === 'asc' ? diff : -diff;
+    });
+  }, [pinterestTops, pinSortField, pinSortDir]);
+
+  const togglePinSort = useCallback(
+    (field: PinSortField) => {
+      if (pinSortField === field) {
+        setPinSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+      } else {
+        setPinSortField(field);
+        setPinSortDir('desc');
+      }
+    },
+    [pinSortField]
   );
 
   const refreshChannel = useCallback(
@@ -220,59 +255,43 @@ export const RenderAnalytics: FC<{
         </button>
       </div>
 
-      {/* Overall Performance Section */}
-      <div className="bg-newBgColorInner rounded-xl p-6 border border-customColor6">
-        <div className="mb-6">
-          <h2 className="text-2xl font-semibold mb-1">Overall performance</h2>
-          <p className="text-sm text-gray-400">
-            Percent changes are compared to {dateLabel} before the selected date range. Metrics updated in real-time except for audience.
-          </p>
-        </div>
-        
-        {/* Metrics Grid */}
+      {/* Analytics Dashboard Section */}
+      <div>
+        <h2 className="text-2xl font-semibold mb-4">
+          {t('analytics_dashboard', 'Analytics Dashboard')}
+        </h2>
+
+        {/* Stat Cards */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           {data?.map((metric: any, index: number) => {
             const isAverage = metric.average;
             const totalValue = parseFloat(total[index]?.toString().replace(/,/g, '').replace(/%/g, '') || '0');
-            const percentageChange = metric.percentageChange || 0;
-            const isPositive = percentageChange >= 0;
-            
+            const active = selectedMetric === index;
+
             return (
-              <div
+              <button
                 key={`metric-${index}`}
-                className="bg-newTableHeader rounded-lg p-4 hover:bg-opacity-80 transition-all cursor-pointer border border-transparent hover:border-purple-500"
+                onClick={() => setSelectedMetric(index)}
+                className={clsx(
+                  'text-left bg-newTableHeader rounded-lg overflow-hidden border transition-all',
+                  active
+                    ? 'border-purple-500'
+                    : 'border-customColor6 hover:border-purple-500'
+                )}
               >
-                <div className="flex items-center gap-2 mb-3">
-                  <svg
-                    className="w-5 h-5 text-gray-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle cx="12" cy="12" r="2" />
-                  </svg>
-                  <h3 className="text-sm font-medium text-gray-300">{metric.label}</h3>
+                <div
+                  className="h-[3px]"
+                  style={{ backgroundColor: ACCENT_COLOR }}
+                />
+                <div className="p-4">
+                  <div className="text-xs font-medium text-gray-400 mb-1">
+                    {metric.label}
+                  </div>
+                  <div className="text-2xl font-bold text-textColor">
+                    {isAverage ? totalValue.toFixed(2) + '%' : formatNumber(totalValue)}
+                  </div>
                 </div>
-                
-                {/* Value */}
-                <div className="text-3xl font-bold mb-2">{isAverage ? totalValue.toFixed(2) + '%' : formatNumber(totalValue)}</div>
-                
-                {/* Percentage Change */}
-                <div className={`flex items-center gap-1 text-sm font-medium ${
-                  isPositive ? 'text-green-500' : 'text-red-500'
-                }`}>
-                  {isPositive ? (
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                    </svg>
-                  ) : (
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M14.707 10.293a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 12.586V5a1 1 0 012 0v7.586l2.293-2.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                  )}
-                  <span>{Math.abs(percentageChange)}%</span>
-                </div>
-              </div>
+              </button>
             );
           })}
         </div>
@@ -280,133 +299,153 @@ export const RenderAnalytics: FC<{
 
       {/* Performance Over Time Section */}
       <div className="bg-newBgColorInner rounded-xl p-6 border border-customColor6">
-        <div className="mb-6">
-          <h2 className="text-2xl font-semibold mb-4">Performance over time</h2>
-          
-          {/* Metric Selectors */}
-          <div className="flex flex-wrap gap-4 items-center">
-            <div className="flex items-center gap-3">
-              <label className="text-sm text-gray-400 font-medium">Metric</label>
-              <div className="w-48">
-                <Select
-                  label=""
-                  name="metric1"
-                  disableForm={true}
-                  hideErrors={true}
-                  value={selectedMetric1}
-                  onChange={(e) => setSelectedMetric1(+e.target.value)}
-                >
-                  {data?.map((metric: any, index: number) => (
-                    <option key={`m1-${index}`} value={index}>
-                      {metric.label}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            </div>
+        {(() => {
+          const metric = data?.[selectedMetric];
+          if (!metric) return null;
 
-            <div className="flex items-center gap-2 text-gray-500">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-              </svg>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <label className="text-sm text-gray-400 font-medium">Metric</label>
-              <div className="w-48">
-                <Select
-                  label=""
-                  name="metric2"
-                  disableForm={true}
-                  hideErrors={true}
-                  value={selectedMetric2}
-                  onChange={(e) => setSelectedMetric2(+e.target.value)}
-                >
-                  {data?.map((metric: any, index: number) => (
-                    <option key={`m2-${index}`} value={index}>
-                      {metric.label}
-                    </option>
-                  ))}
-                </Select>
+          return (
+            <>
+              <div className="mb-4">
+                <h2 className="text-xl font-semibold mb-1">
+                  {metric.label} {t('over_time', 'over time')}
+                </h2>
+                <p className="text-sm text-gray-400">
+                  {t('view_how_your_metric_has_changed_over_time', 'View how your')}{' '}
+                  {metric.label.toLowerCase()}{' '}
+                  {t('has_changed_over_time', 'has changed over time')}
+                </p>
               </div>
-            </div>
-          </div>
-        </div>
 
-        {/* Charts Comparison */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {[selectedMetric1, selectedMetric2].map((metricIndex, idx) => {
-            const metric = data?.[metricIndex];
-            if (!metric) return null;
-            
-            const isAverage = metric.average;
-            const totalValue = parseFloat(total[metricIndex]?.toString().replace(/,/g, '').replace(/%/g, '') || '0');
-            
-            return (
-              <div
-                key={`chart-${idx}`}
-                className="bg-newTableHeader rounded-lg p-5 border border-customColor6"
-              >
-                <div className="mb-4">
-                  <h3 className="text-lg font-semibold mb-1">{metric.label}</h3>
-                  <div className="text-3xl font-bold text-purple-400">
-                    {isAverage ? totalValue.toFixed(2) + '%' : formatNumber(totalValue)}
-                  </div>
-                </div>
-                
-                <div className="h-[300px] relative">
-                  <ChartSocial {...metric} key={`chart-social-${metricIndex}`} />
-                </div>
+              {/* Metric Pills */}
+              <div className="flex flex-wrap gap-2 mb-6">
+                {data?.map((m: any, index: number) => {
+                  const active = selectedMetric === index;
+                  return (
+                    <button
+                      key={`pill-${index}`}
+                      onClick={() => setSelectedMetric(index)}
+                      className={clsx(
+                        'flex items-center gap-2 px-3 py-1.5 rounded-full text-sm border transition-colors',
+                        active
+                          ? 'text-white border-transparent'
+                          : 'border-customColor6 text-gray-400 hover:text-textColor'
+                      )}
+                      style={active ? { backgroundColor: ACCENT_COLOR } : undefined}
+                    >
+                      <span
+                        className="w-2 h-2 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: active ? '#fff' : ACCENT_COLOR }}
+                      />
+                      {m.label}
+                    </button>
+                  );
+                })}
               </div>
-            );
-          })}
-        </div>
+
+              <div className="h-[320px] relative">
+                <ChartSocial {...metric} color={ACCENT_COLOR} key={`chart-social-${selectedMetric}`} />
+              </div>
+            </>
+          );
+        })()}
       </div>
 
-      {/* Pinterest Top 10 Pins Section */}
+      {/* Pinterest Top Pins Section */}
       {isPinterest && pinterestTops && pinterestTops.topPins?.length > 0 && (
         <div className="bg-newBgColorInner rounded-xl p-6 border border-customColor6">
-          <h2 className="text-xl font-semibold mb-4">{t('top_pins', 'Top 10 Pins by Impressions')}</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {pinterestTops.topPins.slice(0, 10).map((pin: any, i: number) => (
-              <div
-                key={pin.id || i}
-                className="bg-newTableHeader rounded-lg p-4 border border-customColor6 flex items-center gap-4"
-              >
-                <div className="text-2xl font-bold text-purple-400 w-8 text-center">
-                  {i + 1}
-                </div>
-                {pin.imageUrl && (
-                  <img
-                    src={pin.imageUrl}
-                    alt={pin.title || 'Pin'}
-                    className="w-12 h-12 rounded-md object-cover"
-                  />
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-sm truncate">
-                    {pin.title || t('untitled_pin', 'Untitled Pin')}
-                  </div>
-                  {pin.url && (
-                    <a
-                      href={pin.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-purple-400 hover:underline"
+          <div className="mb-4">
+            <h2 className="text-xl font-semibold mb-1">{t('top_pins', 'Top Pins')}</h2>
+            <p className="text-sm text-gray-400">
+              {t(
+                'top_pins_description',
+                'Your top performing pins for the selected period. Click a column header to sort.'
+              )}
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-customColor6">
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-400 whitespace-nowrap">
+                    #
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-400 whitespace-nowrap">
+                    {t('pin', 'Pin')}
+                  </th>
+                  {(
+                    [
+                      ['impressions', t('impressions', 'Impressions')],
+                      ['pinClicks', t('pin_clicks', 'Pin Clicks')],
+                      ['outboundClicks', t('outbound_clicks', 'Outbound Clicks')],
+                      ['saves', t('saves', 'Saves')],
+                      ['ctr', t('outbound_ctr', 'Outbound CTR')],
+                    ] as [PinSortField, string][]
+                  ).map(([field, label]) => (
+                    <th
+                      key={field}
+                      onClick={() => togglePinSort(field)}
+                      className="px-3 py-3 text-right text-xs font-medium text-gray-400 whitespace-nowrap cursor-pointer select-none hover:text-textColor"
                     >
-                      {t('view_pin', 'View Pin')}
-                    </a>
-                  )}
-                </div>
-                <div className="text-right whitespace-nowrap">
-                  <div className="text-lg font-bold">{formatNumber(pin.impressions || 0)}</div>
-                  <div className="text-xs text-gray-400">{t('impressions', 'Impressions')}</div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    {formatNumber(pin.saves || 0)} saves &middot; {formatNumber(pin.pinClicks || 0)} clicks
-                  </div>
-                </div>
-              </div>
-            ))}
+                      <span className="inline-flex items-center gap-1">
+                        {label}
+                        {pinSortField === field && (pinSortDir === 'asc' ? '▲' : '▼')}
+                      </span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sortedTopPins.map((pin: any, i: number) => (
+                  <tr
+                    key={pin.id || i}
+                    className="border-b border-customColor6 last:border-0 hover:bg-newTableHeader"
+                  >
+                    <td className="px-3 py-3 text-gray-400">{i + 1}</td>
+                    <td className="px-3 py-3">
+                      <div className="flex items-center gap-3 min-w-[220px]">
+                        {pin.imageUrl && (
+                          <img
+                            src={pin.imageUrl}
+                            alt={pin.title || 'Pin'}
+                            className="w-10 h-10 rounded-md object-cover flex-shrink-0"
+                          />
+                        )}
+                        <div className="min-w-0">
+                          <div className="font-medium text-sm truncate max-w-[240px]">
+                            {pin.title || t('untitled_pin', 'Untitled Pin')}
+                          </div>
+                          {pin.url && (
+                            <a
+                              href={pin.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-purple-400 hover:underline"
+                            >
+                              {t('view_pin', 'View Pin')}
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 text-right font-medium whitespace-nowrap">
+                      {formatNumber(pin.impressions || 0)}
+                    </td>
+                    <td className="px-3 py-3 text-right whitespace-nowrap">
+                      {formatNumber(pin.pinClicks || 0)}
+                    </td>
+                    <td className="px-3 py-3 text-right whitespace-nowrap">
+                      {formatNumber(pin.outboundClicks || 0)}
+                    </td>
+                    <td className="px-3 py-3 text-right whitespace-nowrap">
+                      {formatNumber(pin.saves || 0)}
+                    </td>
+                    <td className="px-3 py-3 text-right whitespace-nowrap">
+                      {pin.ctr.toFixed(2)}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
