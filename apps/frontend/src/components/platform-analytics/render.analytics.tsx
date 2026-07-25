@@ -7,7 +7,8 @@ import { ChartSocial } from '@gitroom/frontend/components/analytics/chart-social
 import { LoadingComponent } from '@gitroom/frontend/components/layout/loading';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 
-const ACCENT_COLOR = '#8b5cf6';
+const COMPARE_COLORS = ['#8b5cf6', '#14b8a6'];
+const INACTIVE_DOT_COLOR = '#6b7280';
 
 type PinSortField = 'impressions' | 'outboundClicks' | 'saves' | 'ctr';
 
@@ -19,7 +20,7 @@ export const RenderAnalytics: FC<{
 }> = (props) => {
   const { integration, date, customStartDate, customEndDate } = props;
   const [loading, setLoading] = useState(true);
-  const [selectedMetric, setSelectedMetric] = useState<number>(0);
+  const [selectedMetrics, setSelectedMetrics] = useState<number[]>([0]);
   const [exporting, setExporting] = useState(false);
   const [pinSortField, setPinSortField] = useState<PinSortField>('ctr');
   const [pinSortDir, setPinSortDir] = useState<'asc' | 'desc'>('desc');
@@ -81,14 +82,41 @@ export const RenderAnalytics: FC<{
     }
   );
 
-  const sortedTopPins = useMemo(() => {
-    const pins = (pinterestTops?.topPins || []).map((pin: any) => ({
-      ...pin,
-      ctr: pin.impressions
-        ? ((pin.outboundClicks || 0) / pin.impressions) * 100
-        : 0,
+  const aggregatedTopPins = useMemo(() => {
+    const pins = pinterestTops?.topPins || [];
+    const groups = new Map<
+      string,
+      { url: string; imageUrl: string; impressions: number; outboundClicks: number; saves: number }
+    >();
+
+    pins.forEach((pin: any) => {
+      const key = pin.destinationUrl || pin.url || pin.id;
+      if (!key) return;
+      const existing = groups.get(key);
+      if (existing) {
+        existing.impressions += pin.impressions || 0;
+        existing.outboundClicks += pin.outboundClicks || 0;
+        existing.saves += pin.saves || 0;
+        if (!existing.imageUrl && pin.imageUrl) {
+          existing.imageUrl = pin.imageUrl;
+        }
+      } else {
+        groups.set(key, {
+          url: pin.destinationUrl || pin.url || '',
+          imageUrl: pin.imageUrl || '',
+          impressions: pin.impressions || 0,
+          outboundClicks: pin.outboundClicks || 0,
+          saves: pin.saves || 0,
+        });
+      }
+    });
+
+    const rows = Array.from(groups.values()).map((row) => ({
+      ...row,
+      ctr: row.impressions ? (row.outboundClicks / row.impressions) * 100 : 0,
     }));
-    return [...pins].sort((a: any, b: any) => {
+
+    return rows.sort((a, b) => {
       const diff = (a[pinSortField] || 0) - (b[pinSortField] || 0);
       return pinSortDir === 'asc' ? diff : -diff;
     });
@@ -105,6 +133,20 @@ export const RenderAnalytics: FC<{
     },
     [pinSortField]
   );
+
+  const toggleMetric = useCallback((index: number) => {
+    setSelectedMetrics((prev) => {
+      if (prev.includes(index)) {
+        // keep at least one metric selected
+        return prev.length === 1 ? prev : prev.filter((i) => i !== index);
+      }
+      if (prev.length >= 2) {
+        // drop the oldest selection, keep the most recent 2
+        return [prev[1], index];
+      }
+      return [...prev, index];
+    });
+  }, []);
 
   const refreshChannel = useCallback(
     (
@@ -261,22 +303,25 @@ export const RenderAnalytics: FC<{
           {data?.map((metric: any, index: number) => {
             const isAverage = metric.average;
             const totalValue = parseFloat(total[index]?.toString().replace(/,/g, '').replace(/%/g, '') || '0');
-            const active = selectedMetric === index;
+            const slot = selectedMetrics.indexOf(index);
+            const active = slot !== -1;
+            const color = active ? COMPARE_COLORS[slot] : undefined;
 
             return (
               <button
                 key={`metric-${index}`}
-                onClick={() => setSelectedMetric(index)}
+                onClick={() => toggleMetric(index)}
                 className={clsx(
                   'text-left bg-newTableHeader rounded-lg overflow-hidden border transition-all',
                   active
-                    ? 'border-purple-500'
+                    ? 'border-current'
                     : 'border-customColor6 hover:border-purple-500'
                 )}
+                style={active ? { color } : undefined}
               >
                 <div
                   className="h-[3px]"
-                  style={{ backgroundColor: ACCENT_COLOR }}
+                  style={{ backgroundColor: color || INACTIVE_DOT_COLOR }}
                 />
                 <div className="p-4">
                   <div className="text-xs font-medium text-gray-400 mb-1">
@@ -295,18 +340,31 @@ export const RenderAnalytics: FC<{
       {/* Performance Over Time Section */}
       <div className="bg-newBgColorInner rounded-xl p-6 border border-customColor6">
         {(() => {
-          const metric = data?.[selectedMetric];
-          if (!metric) return null;
+          const chartSeries = selectedMetrics
+            .map((index, slot) => {
+              const metric = data?.[index];
+              if (!metric) return null;
+              return {
+                label: metric.label as string,
+                color: COMPARE_COLORS[slot],
+                data: metric.data,
+              };
+            })
+            .filter((s): s is { label: string; color: string; data: any } => !!s);
+
+          if (!chartSeries.length) return null;
+
+          const titleLabel = chartSeries.map((s) => s.label).join(` ${t('vs', 'vs')} `);
 
           return (
             <>
               <div className="mb-4">
                 <h2 className="text-xl font-semibold mb-1">
-                  {metric.label} {t('over_time', 'over time')}
+                  {titleLabel} {t('over_time', 'over time')}
                 </h2>
                 <p className="text-sm text-gray-400">
                   {t('view_how_your_metric_has_changed_over_time', 'View how your')}{' '}
-                  {metric.label.toLowerCase()}{' '}
+                  {titleLabel.toLowerCase()}{' '}
                   {t('has_changed_over_time', 'has changed over time')}
                 </p>
               </div>
@@ -314,31 +372,39 @@ export const RenderAnalytics: FC<{
               {/* Metric Pills */}
               <div className="flex flex-wrap gap-2 mb-6">
                 {data?.map((m: any, index: number) => {
-                  const active = selectedMetric === index;
+                  const slot = selectedMetrics.indexOf(index);
+                  const active = slot !== -1;
+                  const color = active ? COMPARE_COLORS[slot] : undefined;
                   return (
                     <button
                       key={`pill-${index}`}
-                      onClick={() => setSelectedMetric(index)}
+                      onClick={() => toggleMetric(index)}
                       className={clsx(
                         'flex items-center gap-2 px-3 py-1.5 rounded-full text-sm border transition-colors',
                         active
                           ? 'text-white border-transparent'
                           : 'border-customColor6 text-gray-400 hover:text-textColor'
                       )}
-                      style={active ? { backgroundColor: ACCENT_COLOR } : undefined}
+                      style={active ? { backgroundColor: color } : undefined}
                     >
                       <span
                         className="w-2 h-2 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: active ? '#fff' : ACCENT_COLOR }}
+                        style={{ backgroundColor: active ? '#fff' : INACTIVE_DOT_COLOR }}
                       />
                       {m.label}
                     </button>
                   );
                 })}
               </div>
+              <p className="text-xs text-gray-500 mb-4">
+                {t(
+                  'select_up_to_two_metrics_to_compare',
+                  'Select up to two metrics to overlay and compare.'
+                )}
+              </p>
 
               <div className="h-[320px] relative">
-                <ChartSocial {...metric} color={ACCENT_COLOR} key={`chart-social-${selectedMetric}`} />
+                <ChartSocial series={chartSeries} key={`chart-social-${selectedMetrics.join('-')}`} />
               </div>
             </>
           );
@@ -353,7 +419,7 @@ export const RenderAnalytics: FC<{
             <p className="text-sm text-gray-400">
               {t(
                 'top_pins_description',
-                'Ranked by outbound click-through rate. Click a column header to sort.'
+                'Aggregated by destination URL for the selected time frame, ranked by outbound click-through rate. Click a column header to sort.'
               )}
             </p>
           </div>
@@ -392,21 +458,21 @@ export const RenderAnalytics: FC<{
                 </tr>
               </thead>
               <tbody>
-                {sortedTopPins.map((pin: any, i: number) => (
+                {aggregatedTopPins.map((row, i: number) => (
                   <tr
-                    key={pin.id || i}
+                    key={row.url || i}
                     className="border-b border-customColor6 last:border-0 hover:bg-newTableHeader"
                   >
                     <td className="px-3 py-3 text-gray-400">{i + 1}</td>
                     <td className="px-3 py-3 max-w-[220px]">
-                      {pin.destinationUrl || pin.url ? (
+                      {row.url ? (
                         <a
-                          href={pin.destinationUrl || pin.url}
+                          href={row.url}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-purple-400 hover:underline truncate block"
                         >
-                          {pin.destinationUrl || pin.url}
+                          {row.url}
                         </a>
                       ) : (
                         <span className="text-gray-500">
@@ -415,25 +481,25 @@ export const RenderAnalytics: FC<{
                       )}
                     </td>
                     <td className="px-3 py-3">
-                      {pin.imageUrl && (
+                      {row.imageUrl && (
                         <img
-                          src={pin.imageUrl}
-                          alt={pin.title || 'Pin'}
+                          src={row.imageUrl}
+                          alt=""
                           className="w-10 h-10 rounded-md object-cover flex-shrink-0"
                         />
                       )}
                     </td>
                     <td className="px-3 py-3 text-right font-medium whitespace-nowrap">
-                      {formatNumber(pin.impressions || 0)}
+                      {formatNumber(row.impressions || 0)}
                     </td>
                     <td className="px-3 py-3 text-right whitespace-nowrap">
-                      {formatNumber(pin.outboundClicks || 0)}
+                      {formatNumber(row.outboundClicks || 0)}
                     </td>
                     <td className="px-3 py-3 text-right whitespace-nowrap">
-                      {formatNumber(pin.saves || 0)}
+                      {formatNumber(row.saves || 0)}
                     </td>
                     <td className="px-3 py-3 text-right whitespace-nowrap">
-                      {pin.ctr.toFixed(2)}%
+                      {row.ctr.toFixed(2)}%
                     </td>
                   </tr>
                 ))}
