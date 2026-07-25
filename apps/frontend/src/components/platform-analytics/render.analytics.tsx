@@ -9,12 +9,7 @@ import { useT } from '@gitroom/react/translation/get.transation.service.client';
 
 const ACCENT_COLOR = '#8b5cf6';
 
-type PinSortField =
-  | 'impressions'
-  | 'pinClicks'
-  | 'outboundClicks'
-  | 'saves'
-  | 'ctr';
+type PinSortField = 'impressions' | 'outboundClicks' | 'ctr';
 
 export const RenderAnalytics: FC<{
   integration: Integration & { identifier?: string };
@@ -26,7 +21,7 @@ export const RenderAnalytics: FC<{
   const [loading, setLoading] = useState(true);
   const [selectedMetric, setSelectedMetric] = useState<number>(0);
   const [exporting, setExporting] = useState(false);
-  const [pinSortField, setPinSortField] = useState<PinSortField>('impressions');
+  const [pinSortField, setPinSortField] = useState<PinSortField>('ctr');
   const [pinSortDir, setPinSortDir] = useState<'asc' | 'desc'>('desc');
   const fetch = useFetch();
 
@@ -358,7 +353,7 @@ export const RenderAnalytics: FC<{
             <p className="text-sm text-gray-400">
               {t(
                 'top_pins_description',
-                'Your top performing pins for the selected period. Click a column header to sort.'
+                'Ranked by outbound click-through rate. Click a column header to sort.'
               )}
             </p>
           </div>
@@ -370,15 +365,16 @@ export const RenderAnalytics: FC<{
                     #
                   </th>
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-400 whitespace-nowrap">
-                    {t('pin', 'Pin')}
+                    {t('url', 'URL')}
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-400 whitespace-nowrap">
+                    {t('image', 'Image')}
                   </th>
                   {(
                     [
                       ['impressions', t('impressions', 'Impressions')],
-                      ['pinClicks', t('pin_clicks', 'Pin Clicks')],
                       ['outboundClicks', t('outbound_clicks', 'Outbound Clicks')],
-                      ['saves', t('saves', 'Saves')],
-                      ['ctr', t('outbound_ctr', 'Outbound CTR')],
+                      ['ctr', t('click_through_rate', 'Click Through Rate')],
                     ] as [PinSortField, string][]
                   ).map(([field, label]) => (
                     <th
@@ -401,43 +397,36 @@ export const RenderAnalytics: FC<{
                     className="border-b border-customColor6 last:border-0 hover:bg-newTableHeader"
                   >
                     <td className="px-3 py-3 text-gray-400">{i + 1}</td>
+                    <td className="px-3 py-3 max-w-[220px]">
+                      {pin.url ? (
+                        <a
+                          href={pin.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-purple-400 hover:underline truncate block"
+                        >
+                          {pin.url}
+                        </a>
+                      ) : (
+                        <span className="text-gray-500">
+                          {t('untitled_pin', 'Untitled Pin')}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-3 py-3">
-                      <div className="flex items-center gap-3 min-w-[220px]">
-                        {pin.imageUrl && (
-                          <img
-                            src={pin.imageUrl}
-                            alt={pin.title || 'Pin'}
-                            className="w-10 h-10 rounded-md object-cover flex-shrink-0"
-                          />
-                        )}
-                        <div className="min-w-0">
-                          <div className="font-medium text-sm truncate max-w-[240px]">
-                            {pin.title || t('untitled_pin', 'Untitled Pin')}
-                          </div>
-                          {pin.url && (
-                            <a
-                              href={pin.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs text-purple-400 hover:underline"
-                            >
-                              {t('view_pin', 'View Pin')}
-                            </a>
-                          )}
-                        </div>
-                      </div>
+                      {pin.imageUrl && (
+                        <img
+                          src={pin.imageUrl}
+                          alt={pin.title || 'Pin'}
+                          className="w-10 h-10 rounded-md object-cover flex-shrink-0"
+                        />
+                      )}
                     </td>
                     <td className="px-3 py-3 text-right font-medium whitespace-nowrap">
                       {formatNumber(pin.impressions || 0)}
                     </td>
                     <td className="px-3 py-3 text-right whitespace-nowrap">
-                      {formatNumber(pin.pinClicks || 0)}
-                    </td>
-                    <td className="px-3 py-3 text-right whitespace-nowrap">
                       {formatNumber(pin.outboundClicks || 0)}
-                    </td>
-                    <td className="px-3 py-3 text-right whitespace-nowrap">
-                      {formatNumber(pin.saves || 0)}
                     </td>
                     <td className="px-3 py-3 text-right whitespace-nowrap">
                       {pin.ctr.toFixed(2)}%
