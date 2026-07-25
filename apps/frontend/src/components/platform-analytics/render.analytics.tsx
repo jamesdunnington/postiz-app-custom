@@ -86,7 +86,7 @@ export const RenderAnalytics: FC<{
     const pins = pinterestTops?.topPins || [];
     const groups = new Map<
       string,
-      { url: string; imageUrl: string; impressions: number; outboundClicks: number; saves: number }
+      { url: string; impressions: number; outboundClicks: number; saves: number }
     >();
 
     pins.forEach((pin: any) => {
@@ -97,13 +97,9 @@ export const RenderAnalytics: FC<{
         existing.impressions += pin.impressions || 0;
         existing.outboundClicks += pin.outboundClicks || 0;
         existing.saves += pin.saves || 0;
-        if (!existing.imageUrl && pin.imageUrl) {
-          existing.imageUrl = pin.imageUrl;
-        }
       } else {
         groups.set(key, {
           url: pin.destinationUrl || pin.url || '',
-          imageUrl: pin.imageUrl || '',
           impressions: pin.impressions || 0,
           outboundClicks: pin.outboundClicks || 0,
           saves: pin.saves || 0,
@@ -433,9 +429,6 @@ export const RenderAnalytics: FC<{
                   <th className="px-3 py-3 text-left text-xs font-medium text-gray-400 whitespace-nowrap">
                     {t('url', 'URL')}
                   </th>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-gray-400 whitespace-nowrap">
-                    {t('image', 'Image')}
-                  </th>
                   {(
                     [
                       ['impressions', t('impressions', 'Impressions')],
@@ -478,15 +471,6 @@ export const RenderAnalytics: FC<{
                         <span className="text-gray-500">
                           {t('untitled_pin', 'Untitled Pin')}
                         </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-3">
-                      {row.imageUrl && (
-                        <img
-                          src={row.imageUrl}
-                          alt=""
-                          className="w-10 h-10 rounded-md object-cover flex-shrink-0"
-                        />
                       )}
                     </td>
                     <td className="px-3 py-3 text-right font-medium whitespace-nowrap">
