@@ -20,7 +20,7 @@ export const RenderAnalytics: FC<{
 }> = (props) => {
   const { integration, date, customStartDate, customEndDate } = props;
   const [loading, setLoading] = useState(true);
-  const [selectedMetrics, setSelectedMetrics] = useState<number[]>([0]);
+  const [manualMetrics, setManualMetrics] = useState<number[] | null>(null);
   const [exporting, setExporting] = useState(false);
   const [pinSortField, setPinSortField] = useState<PinSortField>('ctr');
   const [pinSortDir, setPinSortDir] = useState<'asc' | 'desc'>('desc');
@@ -58,6 +58,16 @@ export const RenderAnalytics: FC<{
     refreshWhenOffline: false,
     revalidateOnMount: true,
   });
+
+  const defaultMetrics = useMemo(() => {
+    if (!data) return [0];
+    const outboundClicksIndex = data.findIndex(
+      (m: any) => m.label === 'Outbound Clicks'
+    );
+    return outboundClicksIndex > 0 ? [0, outboundClicksIndex] : [0];
+  }, [data]);
+
+  const selectedMetrics = manualMetrics ?? defaultMetrics;
 
   const isPinterest = (integration as any).identifier === 'pinterest';
 
@@ -130,19 +140,23 @@ export const RenderAnalytics: FC<{
     [pinSortField]
   );
 
-  const toggleMetric = useCallback((index: number) => {
-    setSelectedMetrics((prev) => {
-      if (prev.includes(index)) {
-        // keep at least one metric selected
-        return prev.length === 1 ? prev : prev.filter((i) => i !== index);
-      }
-      if (prev.length >= 2) {
-        // drop the oldest selection, keep the most recent 2
-        return [prev[1], index];
-      }
-      return [...prev, index];
-    });
-  }, []);
+  const toggleMetric = useCallback(
+    (index: number) => {
+      setManualMetrics((current) => {
+        const prev = current ?? defaultMetrics;
+        if (prev.includes(index)) {
+          // keep at least one metric selected
+          return prev.length === 1 ? prev : prev.filter((i) => i !== index);
+        }
+        if (prev.length >= 2) {
+          // drop the oldest selection, keep the most recent 2
+          return [prev[1], index];
+        }
+        return [...prev, index];
+      });
+    },
+    [defaultMetrics]
+  );
 
   const refreshChannel = useCallback(
     (
