@@ -7,7 +7,10 @@ import { useCallback, useState } from 'react';
 import { SelectCustomer } from '@gitroom/frontend/components/launches/select.customer';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import i18next from 'i18next';
-import { newDayjs } from '@gitroom/frontend/components/layout/set.timezone';
+import {
+  newDayjs,
+  getTimezone,
+} from '@gitroom/frontend/components/layout/set.timezone';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { useToaster } from '@gitroom/react/toaster/toaster';
 
@@ -239,6 +242,7 @@ export const Filters = () => {
       toast.show('Step 1/3: Validating all scheduled posts...', 'warning');
       const validateResponse = await fetch('/integrations/validate-all-timeslots', {
         method: 'POST',
+        body: JSON.stringify({ timezone: getTimezone() }),
       });
 
       if (validateResponse.ok) {

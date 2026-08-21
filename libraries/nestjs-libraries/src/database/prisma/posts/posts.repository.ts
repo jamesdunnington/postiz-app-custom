@@ -8,6 +8,7 @@ import isoWeek from 'dayjs/plugin/isoWeek';
 import weekOfYear from 'dayjs/plugin/weekOfYear';
 import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
 import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
 import { v4 as uuidv4 } from 'uuid';
 import { CreateTagDto } from '@gitroom/nestjs-libraries/dtos/posts/create.tag.dto';
 import * as Sentry from '@sentry/nextjs';
@@ -16,6 +17,7 @@ dayjs.extend(isoWeek);
 dayjs.extend(weekOfYear);
 dayjs.extend(isSameOrAfter);
 dayjs.extend(utc);
+dayjs.extend(timezone);
 
 @Injectable()
 export class PostsRepository {
@@ -1139,15 +1141,39 @@ export class PostsRepository {
     count: number,
     postingTimes: { time: number }[],
     searchFromEnd: boolean = false,
-    userTimezone: number = 0
+    userTimezone: number = 0,
+    timezoneName?: string
   ) {
     console.log(`[getNextAvailableSlots] Looking for ${count} slot(s) for integration ${integrationId}, searchFromEnd: ${searchFromEnd}`);
     console.log(`[getNextAvailableSlots] Has ${postingTimes.length} posting times configured`);
-    
+
     const slots: Date[] = [];
     const usedTimestamps = new Set<number>(); // Track timestamps to prevent duplicates
     let daysChecked = 0; // Track days checked for logging
-    
+
+    // Resolve a candidate slot's actual UTC instant for a given local calendar
+    // day + local minutes-from-midnight. Prefers the live IANA zone name
+    // (correct across daylight saving for that specific date) when given;
+    // otherwise falls back to the existing fixed-offset math unchanged.
+    const resolveSlotTime = (currentDay: dayjs.Dayjs, time: number) => {
+      const hours = Math.floor(time / 60);
+      const minutes = time % 60;
+
+      if (timezoneName) {
+        return dayjs
+          .tz(currentDay.format('YYYY-MM-DD'), timezoneName)
+          .hour(hours)
+          .minute(minutes)
+          .second(0)
+          .millisecond(0)
+          .utc();
+      }
+
+      const dayAtMidnight = currentDay.startOf('day'); // Ensure we're at midnight UTC
+      const utcTimeWithLocalHours = dayAtMidnight.hour(hours).minute(minutes).second(0).millisecond(0);
+      return utcTimeWithLocalHours.subtract(userTimezone, 'minute'); // Adjust to actual UTC
+    };
+
     if (searchFromEnd) {
       // For duplicate resolution: find the last occupied slot first
       const lastPost = await this._post.model.post.findFirst({
@@ -1183,16 +1209,8 @@ export class PostsRepository {
       for (const { time } of postingTimes) {
         if (slots.length >= count) break;
 
-        // Convert local time to UTC
-        // time is in minutes from midnight in user's local timezone
-        const hours = Math.floor(time / 60);
-        const minutes = time % 60;
-        
-        // Create a UTC day at midnight, then add the LOCAL time
-        // Finally subtract timezone to get actual UTC time
-        const dayAtMidnight = currentDay.startOf('day'); // Ensure we're at midnight UTC
-        const utcTimeWithLocalHours = dayAtMidnight.hour(hours).minute(minutes).second(0).millisecond(0);
-        const slotTime = utcTimeWithLocalHours.subtract(userTimezone, 'minute'); // Adjust to actual UTC
+        // Convert local time to UTC (see resolveSlotTime above)
+        const slotTime = resolveSlotTime(currentDay, time);
         const slotTimestamp = slotTime.valueOf();
 
         // Only consider future slots
@@ -1241,16 +1259,8 @@ export class PostsRepository {
         for (const { time } of postingTimes) {
           if (slots.length >= count) break;
 
-          // Convert local time to UTC
-          // time is in minutes from midnight in user's local timezone
-          const hours = Math.floor(time / 60);
-          const minutes = time % 60;
-          
-          // Create a UTC day at midnight, then add the LOCAL time
-          // Finally subtract timezone to get actual UTC time
-          const dayAtMidnight = currentDay.startOf('day'); // Ensure we're at midnight UTC
-          const utcTimeWithLocalHours = dayAtMidnight.hour(hours).minute(minutes).second(0).millisecond(0);
-          const slotTime = utcTimeWithLocalHours.subtract(userTimezone, 'minute'); // Adjust to actual UTC
+          // Convert local time to UTC (see resolveSlotTime above)
+          const slotTime = resolveSlotTime(currentDay, time);
           const slotTimestamp = slotTime.valueOf();
 
           // Only consider future slots
@@ -1661,7 +1671,7 @@ export class PostsRepository {
   }
 
   // Find posts scheduled at times that don't match integration's configured time slots
-  async findPostsAtInvalidTimeSlots(orgId?: string, integrationId?: string) {
+  async findPostsAtInvalidTimeSlots(orgId?: string, integrationId?: string, timezoneName?: string) {
     const { logger } = Sentry;
     console.log('[findPostsAtInvalidTimeSlots] Searching for posts at invalid time slots...');
     
@@ -1778,11 +1788,16 @@ export class PostsRepository {
         // Get user's timezone offset (in minutes)
         const userTimezone = post.integration?.organization?.users?.[0]?.user?.timezone || 0;
 
-        // Convert post time from UTC to user's timezone
-        // Database stores in UTC, but posting times are in user's local time
-        // userTimezone is in minutes offset (e.g., -300 for EST, +330 for IST)
+        // Convert post time from UTC to user's timezone.
+        // Prefer the live IANA zone name (e.g. "Asia/Singapore") when the
+        // caller has one — it resolves the correct offset for THIS post's
+        // actual date, including daylight saving. Falls back to the stored
+        // numeric offset (minutes, e.g. +330 for IST) for callers that have
+        // no live timezone to pass (cron jobs, etc.) — unchanged behavior.
         const postTimeUTC = dayjs.utc(post.publishDate);
-        const postTimeInUserTZ = postTimeUTC.add(userTimezone, 'minute');
+        const postTimeInUserTZ = timezoneName
+          ? postTimeUTC.tz(timezoneName)
+          : postTimeUTC.add(userTimezone, 'minute');
         const postTimeInMinutes = postTimeInUserTZ.hour() * 60 + postTimeInUserTZ.minute();
 
         // Only log for wakeupwakecounty or posts at 15:13 UTC (23:13 local)

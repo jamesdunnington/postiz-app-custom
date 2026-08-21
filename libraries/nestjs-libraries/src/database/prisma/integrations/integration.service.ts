@@ -1391,14 +1391,14 @@ export class IntegrationService {
     }
   }
 
-  async rescheduleInvalidTimeSlots(orgId?: string, integrationId?: string) {
+  async rescheduleInvalidTimeSlots(orgId?: string, integrationId?: string, timezoneName?: string) {
     const { logger } = Sentry;
     console.log('[INVALID TIME SLOTS] Starting validation of scheduled post times...');
     logger.info('Starting validation of scheduled post times');
 
     try {
       // Find all posts at invalid time slots
-      const invalidPosts = await this._postsRepository.findPostsAtInvalidTimeSlots(orgId, integrationId);
+      const invalidPosts = await this._postsRepository.findPostsAtInvalidTimeSlots(orgId, integrationId, timezoneName);
 
       if (invalidPosts.length === 0) {
         console.log('[INVALID TIME SLOTS] ✅ All posts are scheduled at valid time slots');
@@ -1446,7 +1446,8 @@ export class IntegrationService {
               1,
               postingTimes,
               true, // searchFromEnd - move to end of schedule
-              post.userTimezone || 0 // Pass user's timezone for proper UTC conversion
+              post.userTimezone || 0, // Pass user's timezone for proper UTC conversion
+              timezoneName // Prefer the live IANA zone when the caller has one
             );
 
             if (availableSlot.length === 0) {

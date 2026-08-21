@@ -645,11 +645,13 @@ export class IntegrationsController {
   @Post('/:id/validate-timeslots')
   async validateAndRescheduleTimeSlots(
     @Param('id') id: string,
-    @GetOrgFromRequest() org: Organization
+    @GetOrgFromRequest() org: Organization,
+    @Body('timezone') timezone?: string
   ) {
     const result = await this._integrationService.rescheduleInvalidTimeSlots(
       org.id,
-      id
+      id,
+      timezone
     );
     return {
       success: true,
@@ -663,9 +665,14 @@ export class IntegrationsController {
   }
 
   @Post('/validate-all-timeslots')
-  async validateAllTimeSlots(@GetOrgFromRequest() org: Organization) {
+  async validateAllTimeSlots(
+    @GetOrgFromRequest() org: Organization,
+    @Body('timezone') timezone?: string
+  ) {
     const result = await this._integrationService.rescheduleInvalidTimeSlots(
-      org.id
+      org.id,
+      undefined,
+      timezone
     );
     return {
       success: true,
