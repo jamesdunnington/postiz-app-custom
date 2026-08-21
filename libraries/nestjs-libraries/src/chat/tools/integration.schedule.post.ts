@@ -137,6 +137,25 @@ If the tools return errors, you would need to rerun it with the right parameters
               integrations[platform.integrationId].providerIdentifier
           )!;
 
+          // Prefer the account's actual stored premium/verified status over
+          // whatever the caller declared — the connected integration is the
+          // source of truth, not a guess made before the account was known.
+          let isPremium = platform.isPremium;
+          try {
+            const storedSettings = JSON.parse(
+              integrations[platform.integrationId].additionalSettings || '[]'
+            );
+            const verifiedSetting = storedSettings.find(
+              (s: { title?: string; value?: boolean }) =>
+                s?.title === 'Verified'
+            );
+            if (verifiedSetting) {
+              isPremium = !!verifiedSetting.value;
+            }
+          } catch (err) {
+            /** fall back to the caller-supplied value **/
+          }
+
           if (dto) {
             const newDTO = new dto();
             const obj = Object.assign(
@@ -160,7 +179,7 @@ If the tools return errors, you would need to rerun it with the right parameters
 
             const errorsLength = [];
             for (const post of platform.postsAndComments) {
-              const maximumCharacters = maxLength(platform.isPremium);
+              const maximumCharacters = maxLength(isPremium);
               const strip = stripHtmlValidation('normal', post.content, true);
               const weightedLength = countCharacters(strip, identifier || '');
               const totalCharacters =
