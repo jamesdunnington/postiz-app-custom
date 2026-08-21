@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import useSWR from 'swr';
+import useSWR, { mutate as mutateGlobal } from 'swr';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { useToaster } from '@gitroom/react/toaster/toaster';
 import { Button } from '@gitroom/react/form/button';
@@ -83,6 +83,7 @@ export const LlmSettings: React.FC = () => {
       const updated = (await res.json()) as LlmSettingsData;
       mutateSettings(updated, false);
       setApiKey('');
+      await mutateGlobal(`/settings/llm/models?provider=${provider}`);
       toast.show('AI settings saved', 'success');
     } catch {
       toast.show('Failed to save AI settings', 'warning');

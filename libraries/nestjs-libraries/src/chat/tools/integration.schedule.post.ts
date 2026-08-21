@@ -152,7 +152,9 @@ If the tools return errors, you would need to rerun it with the right parameters
             const errors = await validate(obj);
             if (errors.length) {
               return {
-                errors: JSON.stringify(errors),
+                output: {
+                  errors: JSON.stringify(errors),
+                },
               };
             }
 
@@ -174,7 +176,9 @@ If the tools return errors, you would need to rerun it with the right parameters
 
             if (errorsLength.length) {
               return {
-                errors: JSON.stringify(errorsLength),
+                output: {
+                  errors: JSON.stringify(errorsLength),
+                },
               };
             }
           }
