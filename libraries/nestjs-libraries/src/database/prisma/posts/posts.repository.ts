@@ -26,7 +26,8 @@ export class PostsRepository {
     private _tags: PrismaRepository<'tags'>,
     private _tagsPosts: PrismaRepository<'tagsPosts'>,
     private _errors: PrismaRepository<'errors'>,
-    private _integrations: PrismaRepository<'integration'>
+    private _integrations: PrismaRepository<'integration'>,
+    private _media: PrismaRepository<'media'>
   ) {}
 
   checkPending15minutesBack() {
@@ -776,6 +777,44 @@ export class PostsRepository {
           }
         }
       }
+    }
+
+    // Auto-create Media Library records for any image attached to this post
+    // that didn't come through the upload widget (e.g. AI chat/API scheduling
+    // with a raw image URL), so it never goes missing from the Media tab.
+    try {
+      const allPaths = Array.from(
+        new Set(
+          body.value
+            .flatMap((v) => v.image || [])
+            .map((img) => img.path)
+            .filter((path): path is string => !!path)
+        )
+      );
+
+      if (allPaths.length) {
+        const existing = await this._media.model.media.findMany({
+          where: { organizationId: orgId, path: { in: allPaths } },
+          select: { path: true },
+        });
+        const existingPaths = new Set(existing.map((e) => e.path));
+        const missingPaths = allPaths.filter((p) => !existingPaths.has(p));
+
+        if (missingPaths.length) {
+          await this._media.model.media.createMany({
+            data: missingPaths.map((path) => ({
+              organizationId: orgId,
+              name: path.split('/').pop() ?? path,
+              path,
+            })),
+            skipDuplicates: true,
+          });
+        }
+      }
+    } catch (err) {
+      Sentry.captureException(err, {
+        extra: { context: 'auto-create media records for post images failed', orgId },
+      });
     }
 
     const previousPost = body.group
