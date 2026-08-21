@@ -553,11 +553,73 @@ export class PostsRepository {
   ) {
     const posts: Post[] = [];
     const uuid = uuidv4();
+    let threadPublishDate: Date | null = null;
 
     for (const value of body.value) {
+      // Thread parts (everything after the first value) share the parent's
+      // publish time — they are one logical scheduled event (a thread), not
+      // separate posts, so they must never run duplicate/slot resolution
+      // against each other or they get scattered across different days.
+      if (threadPublishDate) {
+        posts.push(
+          await this._post.model.post.upsert({
+            where: {
+              id: value.id || uuidv4(),
+            },
+            create: {
+              publishDate: threadPublishDate,
+              integration: {
+                connect: {
+                  id: body.integration.id,
+                  organizationId: orgId,
+                },
+              },
+              parentPost: {
+                connect: {
+                  id: posts[posts.length - 1]?.id,
+                },
+              },
+              content: value.content,
+              group: uuid,
+              intervalInDays: inter ? +inter : null,
+              approvedSubmitForOrder: APPROVED_SUBMIT_FOR_ORDER.NO,
+              state: state === 'draft' ? ('DRAFT' as const) : ('QUEUE' as const),
+              image: JSON.stringify(value.image),
+              settings: JSON.stringify(body.settings),
+              organization: {
+                connect: {
+                  id: orgId,
+                },
+              },
+            },
+            update: {
+              publishDate: threadPublishDate,
+              parentPost: {
+                connect: {
+                  id: posts[posts.length - 1]?.id,
+                },
+              },
+              content: value.content,
+              intervalInDays: inter ? +inter : null,
+              approvedSubmitForOrder: APPROVED_SUBMIT_FOR_ORDER.NO,
+              state: state === 'draft' ? ('DRAFT' as const) : ('QUEUE' as const),
+              image: JSON.stringify(value.image),
+              settings: JSON.stringify(body.settings),
+              lastMessage: {
+                disconnect: true,
+              },
+              submittedForOrder: {
+                disconnect: true,
+              },
+            },
+          })
+        );
+        continue;
+      }
+
       // Check for duplicate schedule and auto-reschedule if needed
       let finalPublishDate = dayjs(date).toDate();
-      
+
       if (state === 'schedule' && body.integration?.id) {
         const existingPost = await this.checkForDuplicateAtTime(
           body.integration.id,
@@ -674,6 +736,8 @@ export class PostsRepository {
           },
         })
       );
+
+      threadPublishDate = finalPublishDate;
 
       if (posts.length === 1) {
         await this._tagsPosts.model.tagsPosts.deleteMany({
