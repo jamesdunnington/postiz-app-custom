@@ -1315,12 +1315,19 @@ export class PostsRepository {
     
     // Get all QUEUE/PUBLISHED posts from today onwards to detect all duplicates
     // (including ones that already posted, to identify the root cause)
+    //
+    // Only root posts (parentPostId: null) are compared against each other.
+    // Thread parts share their parent's exact publishDate by design (a
+    // thread posts as one chained event) — without this filter, every
+    // multi-part thread would look like N "duplicate" posts at the same
+    // slot and Step 2 would scatter the thread's own parts across days.
     const posts = await this._post.model.post.findMany({
       where: {
         state: {
           in: ['QUEUE', 'PUBLISHED'],
         },
         deletedAt: null,
+        parentPostId: null,
         publishDate: {
           gte: startOfToday, // Start from beginning of today, not just future posts
         },
