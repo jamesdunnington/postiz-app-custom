@@ -6,6 +6,10 @@ import { VideoFunctionTool } from '@gitroom/nestjs-libraries/chat/tools/video.fu
 import { GenerateVideoTool } from '@gitroom/nestjs-libraries/chat/tools/generate.video.tool';
 import { GenerateImageTool } from '@gitroom/nestjs-libraries/chat/tools/generate.image.tool';
 import { IntegrationListTool } from '@gitroom/nestjs-libraries/chat/tools/integration.list.tool';
+import { IntegrationListPostsTool } from '@gitroom/nestjs-libraries/chat/tools/integration.list.posts.tool';
+import { IntegrationDeletePostTool } from '@gitroom/nestjs-libraries/chat/tools/integration.delete.post.tool';
+import { IntegrationEditPostDateTool } from '@gitroom/nestjs-libraries/chat/tools/integration.edit.post.date.tool';
+import { IntegrationAnalyticsTool } from '@gitroom/nestjs-libraries/chat/tools/integration.analytics.tool';
 
 export const toolList = [
   IntegrationListTool,
@@ -16,4 +20,8 @@ export const toolList = [
   VideoFunctionTool,
   GenerateVideoTool,
   GenerateImageTool,
+  IntegrationListPostsTool,
+  IntegrationDeletePostTool,
+  IntegrationEditPostDateTool,
+  IntegrationAnalyticsTool,
 ];
