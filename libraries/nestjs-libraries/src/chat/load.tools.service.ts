@@ -68,6 +68,7 @@ export class LoadToolsService {
         - Show analytics for a specific channel (integrationAnalyticsTool — you need the integration id first, from integrationList)
         - List integrations (channels)
         - List a user's existing scheduled/draft/published posts (integrationListPostsTool), to find a post's id/group
+        - Get the full detail of one post, including every part of a thread and each part's own publishDate (integrationGetPostTool)
         - Reschedule an existing post to a new date/time (integrationEditPostDateTool)
         - Edit the text/images of one part of an existing draft or scheduled post (integrationEditPostContentTool) — cannot edit a post that's already published
         - Delete/cancel an existing post (integrationDeletePostTool)
