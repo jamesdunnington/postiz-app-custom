@@ -9,6 +9,7 @@ import { IntegrationListTool } from '@gitroom/nestjs-libraries/chat/tools/integr
 import { IntegrationListPostsTool } from '@gitroom/nestjs-libraries/chat/tools/integration.list.posts.tool';
 import { IntegrationDeletePostTool } from '@gitroom/nestjs-libraries/chat/tools/integration.delete.post.tool';
 import { IntegrationEditPostDateTool } from '@gitroom/nestjs-libraries/chat/tools/integration.edit.post.date.tool';
+import { IntegrationEditPostContentTool } from '@gitroom/nestjs-libraries/chat/tools/integration.edit.post.content.tool';
 import { IntegrationAnalyticsTool } from '@gitroom/nestjs-libraries/chat/tools/integration.analytics.tool';
 
 export const toolList = [
@@ -23,5 +24,6 @@ export const toolList = [
   IntegrationListPostsTool,
   IntegrationDeletePostTool,
   IntegrationEditPostDateTool,
+  IntegrationEditPostContentTool,
   IntegrationAnalyticsTool,
 ];

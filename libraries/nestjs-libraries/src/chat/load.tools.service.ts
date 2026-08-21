@@ -69,9 +69,10 @@ export class LoadToolsService {
         - List integrations (channels)
         - List a user's existing scheduled/draft/published posts (integrationListPostsTool), to find a post's id/group
         - Reschedule an existing post to a new date/time (integrationEditPostDateTool)
+        - Edit the text/images of one part of an existing draft or scheduled post (integrationEditPostContentTool) — cannot edit a post that's already published
         - Delete/cancel an existing post (integrationDeletePostTool)
 
-      - Before calling integrationEditPostDateTool or integrationDeletePostTool, always use integrationListPostsTool first to find and confirm the exact post (show the user its date and content preview) — never guess an id.
+      - Before calling integrationEditPostDateTool, integrationEditPostContentTool, or integrationDeletePostTool, always use integrationListPostsTool first to find and confirm the exact post (show the user its date and content preview) — never guess an id.
       - integrationDeletePostTool is irreversible. Always get explicit confirmation from the user on which specific post before calling it, never assume.
 
       - We schedule posts to different integration like facebook, instagram, etc. but to the user we don't say integrations we say channels as integration is the technical name
