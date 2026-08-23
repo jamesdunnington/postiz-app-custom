@@ -190,6 +190,7 @@ export class PostsRepository {
         state: true,
         intervalInDays: true,
         group: true,
+        image: true,
         tags: {
           select: {
             tag: true,
@@ -859,16 +860,52 @@ export class PostsRepository {
       : undefined;
 
     if (body.group) {
-      await this._post.model.post.updateMany({
+      // Everything still tagged with the pre-save group id at this point is
+      // either genuinely stale (superseded by the migrate-to-new-group
+      // upsert loop above) or — if this save's `value` array was shorter
+      // than what actually existed (a truncated/partial save request) — a
+      // live thread part that never got migrated. We can't ask the caller
+      // which one this is, so refuse to destroy data when the drop looks
+      // like accidental loss rather than an intentional trim: silently
+      // wiping most of a multi-part thread in one save is exactly the bug
+      // behind the X thread fragmentation incident (2026-08-23), where an
+      // image-attach edit collapsed a correct 5-part thread down to 1.
+      const stillUnderOldGroup = await this._post.model.post.findMany({
         where: {
           group: body.group,
           deletedAt: null,
         },
-        data: {
-          parentPostId: null,
-          deletedAt: new Date(),
-        },
+        select: { id: true },
       });
+
+      const keptCount = posts.length;
+      const droppedCount = stillUnderOldGroup.length;
+
+      if (droppedCount > keptCount) {
+        Sentry.captureMessage(
+          'createOrUpdatePost: refusing to delete leftover thread parts, drop count exceeds kept count',
+          {
+            level: 'warning',
+            extra: {
+              orgId,
+              group: body.group,
+              keptCount,
+              droppedCount,
+              droppedIds: stillUnderOldGroup.map((p) => p.id),
+            },
+          }
+        );
+      } else if (droppedCount > 0) {
+        await this._post.model.post.updateMany({
+          where: {
+            id: { in: stillUnderOldGroup.map((p) => p.id) },
+          },
+          data: {
+            parentPostId: null,
+            deletedAt: new Date(),
+          },
+        });
+      }
     }
 
     return { previousPost, posts };
