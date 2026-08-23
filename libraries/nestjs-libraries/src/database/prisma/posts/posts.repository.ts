@@ -328,6 +328,30 @@ export class PostsRepository {
     return { removed: published.length, imagePaths: safeToDeletePaths };
   }
 
+  // Diagnostic: every row ever created under a group, regardless of
+  // deletedAt or parentPostId — used to trace what happened to thread
+  // parts that no longer show up via the normal parent-child lookup.
+  getGroupHistory(orgId: string, group: string) {
+    return this._post.model.post.findMany({
+      where: {
+        organizationId: orgId,
+        group,
+      },
+      select: {
+        id: true,
+        parentPostId: true,
+        content: true,
+        publishDate: true,
+        state: true,
+        deletedAt: true,
+        createdAt: true,
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+    });
+  }
+
   getPost(
     id: string,
     includeIntegration = false,
