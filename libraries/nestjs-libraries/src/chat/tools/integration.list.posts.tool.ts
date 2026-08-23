@@ -39,6 +39,8 @@ export class IntegrationListPostsTool implements AgentToolInterface {
             integrationId: z.string().optional(),
             integrationName: z.string().optional(),
             platform: z.string().optional(),
+            hasAttachments: z.boolean(),
+            attachmentCount: z.number(),
           })
         ),
       }),
@@ -62,16 +64,27 @@ export class IntegrationListPostsTool implements AgentToolInterface {
                 !context.integrationId ||
                 p.integration?.id === context.integrationId
             )
-            .map((p: any) => ({
-              id: p.id,
-              group: p.group,
-              state: p.state,
-              publishDate: new Date(p.publishDate).toISOString(),
-              content: p.content,
-              integrationId: p.integration?.id,
-              integrationName: p.integration?.name,
-              platform: p.integration?.providerIdentifier,
-            })),
+            .map((p: any) => {
+              let attachmentCount = 0;
+              try {
+                attachmentCount = (JSON.parse(p.image || '[]') || []).length;
+              } catch {
+                attachmentCount = 0;
+              }
+
+              return {
+                id: p.id,
+                group: p.group,
+                state: p.state,
+                publishDate: new Date(p.publishDate).toISOString(),
+                content: p.content,
+                integrationId: p.integration?.id,
+                integrationName: p.integration?.name,
+                platform: p.integration?.providerIdentifier,
+                hasAttachments: attachmentCount > 0,
+                attachmentCount,
+              };
+            }),
         };
       },
     });

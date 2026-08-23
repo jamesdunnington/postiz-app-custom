@@ -13,7 +13,7 @@ export class IntegrationGetPostTool implements AgentToolInterface {
   run() {
     return createTool({
       id: 'integrationGetPostTool',
-      description: `Gets the full detail of one post, including every part of a thread (in order) with each part's own current publishDate and content. Use this after integrationListPostsTool (pass its "id" field) when you need to see all thread parts, not just the root — e.g. to check whether a thread's parts got separated onto different dates.`,
+      description: `Gets the full detail of one post, including every part of a thread (in order) with each part's own current publishDate, content, and attached media. Use this after integrationListPostsTool (pass its "id" field) when you need to see all thread parts, not just the root — e.g. to check whether a thread's parts got separated onto different dates, or whether a part has an image/video attached.`,
       inputSchema: z.object({
         postId: z
           .string()
@@ -31,6 +31,13 @@ export class IntegrationGetPostTool implements AgentToolInterface {
                 state: z.string(),
                 publishDate: z.string(),
                 content: z.string(),
+                attachments: z.array(
+                  z.object({
+                    id: z.string().optional(),
+                    type: z.string().optional(),
+                    url: z.string().optional(),
+                  })
+                ),
               })
             ),
           })
@@ -63,6 +70,11 @@ export class IntegrationGetPostTool implements AgentToolInterface {
               state: p.state,
               publishDate: new Date(p.publishDate).toISOString(),
               content: p.content,
+              attachments: (p.image || []).map((img: any) => ({
+                id: img.id,
+                type: img.type,
+                url: img.url,
+              })),
             })),
           },
         };

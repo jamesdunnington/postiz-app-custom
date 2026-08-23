@@ -137,6 +137,39 @@ If the tools return errors, you would need to rerun it with the right parameters
               integrations[platform.integrationId].providerIdentifier
           )!;
 
+          // Guardrail: if a tweet's own text declares a thread size
+          // ("1/5", "2/5", ...) but postsAndComments has fewer entries than
+          // that, the caller almost certainly dropped segments upstream —
+          // this is exactly how 4 of 5 threads in the 2026-08-23 X thread
+          // fragmentation incident silently lost their tail tweets (the
+          // hook tweet said "1/5" but only 1 array entry was ever sent, and
+          // nothing here ever validated the two against each other).
+          const declaredThreadSizes = platform.postsAndComments
+            .map((post) =>
+              stripHtmlValidation('normal', post.content, true)
+                .trim()
+                .match(/^(\d{1,3})\s*\/\s*(\d{1,3})\b/)
+            )
+            .filter((match): match is RegExpMatchArray => !!match)
+            .map((match) => parseInt(match[2], 10))
+            .filter((n) => Number.isFinite(n) && n > 0);
+
+          const maxDeclaredSize = declaredThreadSizes.length
+            ? Math.max(...declaredThreadSizes)
+            : 0;
+
+          if (maxDeclaredSize > platform.postsAndComments.length) {
+            return {
+              output: {
+                errors: `The content says this is a ${maxDeclaredSize}-part thread (e.g. "1/${maxDeclaredSize}"), but postsAndComments only has ${
+                  platform.postsAndComments.length
+                } entr${
+                  platform.postsAndComments.length === 1 ? 'y' : 'ies'
+                }. Re-run with all ${maxDeclaredSize} parts included, or fix the numbering in the content if a shorter thread was intended.`,
+              },
+            };
+          }
+
           // Prefer the account's actual stored premium/verified status over
           // whatever the caller declared — the connected integration is the
           // source of truth, not a guess made before the account was known.
