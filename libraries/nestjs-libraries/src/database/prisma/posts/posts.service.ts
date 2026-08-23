@@ -167,6 +167,10 @@ export class PostsService {
     return this._postRepository.getPosts(orgId, query);
   }
 
+  async getGroupHistory(orgId: string, group: string) {
+    return this._postRepository.getGroupHistory(orgId, group);
+  }
+
   async updateMedia(id: string, imagesList: any[], convertToJPEG = false) {
     try {
       let imageUpdateNeeded = false;

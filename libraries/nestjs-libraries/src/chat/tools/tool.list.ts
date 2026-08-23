@@ -8,6 +8,7 @@ import { GenerateImageTool } from '@gitroom/nestjs-libraries/chat/tools/generate
 import { IntegrationListTool } from '@gitroom/nestjs-libraries/chat/tools/integration.list.tool';
 import { IntegrationListPostsTool } from '@gitroom/nestjs-libraries/chat/tools/integration.list.posts.tool';
 import { IntegrationGetPostTool } from '@gitroom/nestjs-libraries/chat/tools/integration.get.post.tool';
+import { IntegrationGetGroupHistoryTool } from '@gitroom/nestjs-libraries/chat/tools/integration.get.group.history.tool';
 import { IntegrationDeletePostTool } from '@gitroom/nestjs-libraries/chat/tools/integration.delete.post.tool';
 import { IntegrationEditPostDateTool } from '@gitroom/nestjs-libraries/chat/tools/integration.edit.post.date.tool';
 import { IntegrationEditPostContentTool } from '@gitroom/nestjs-libraries/chat/tools/integration.edit.post.content.tool';
@@ -24,6 +25,7 @@ export const toolList = [
   GenerateImageTool,
   IntegrationListPostsTool,
   IntegrationGetPostTool,
+  IntegrationGetGroupHistoryTool,
   IntegrationDeletePostTool,
   IntegrationEditPostDateTool,
   IntegrationEditPostContentTool,
