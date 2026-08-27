@@ -443,6 +443,12 @@ export class PostsRepository {
     return this._post.model.post.findFirst({
       where: {
         integrationId,
+        // Root posts only: a thread's own child parts share the root's
+        // exact publishDate by design, so without this a thread would
+        // detect itself as a "duplicate" on every re-save and get
+        // silently rescheduled to the end of the queue, even when
+        // nothing about the post actually changed.
+        parentPostId: null,
         publishDate: {
           gte: startOfMinute,
           lt: endOfMinute,
@@ -538,7 +544,7 @@ export class PostsRepository {
       }
     }
 
-    return this._post.model.post.update({
+    const updatedPost = await this._post.model.post.update({
       where: {
         organizationId: orgId,
         id,
@@ -547,6 +553,21 @@ export class PostsRepository {
         publishDate: finalPublishDate,
       },
     });
+
+    // Move the rest of this thread's parts along with it, so dragging a
+    // thread's card on the calendar (or an AI reschedule) doesn't leave
+    // its later parts behind at the old time.
+    const chainIds = (await this.getThreadChainIds(id)).filter(
+      (chainId) => chainId !== id
+    );
+    if (chainIds.length) {
+      await this._post.model.post.updateMany({
+        where: { id: { in: chainIds } },
+        data: { publishDate: finalPublishDate },
+      });
+    }
+
+    return updatedPost;
   }
 
   countPostsFromDay(orgId: string, date: Date) {
@@ -1196,13 +1217,35 @@ export class PostsRepository {
     });
   }
 
-  // Moves a root post AND every thread part under it (parentPostId === postId)
-  // to the same new publishDate, so a thread stays intact instead of being
-  // scattered across slots when only its root row is considered "invalid".
+  // Thread parts form a linked list (each part's parentPostId points to the
+  // PREVIOUS part, not the root), so a 3+ part thread needs the full chain
+  // walked one hop at a time - collecting only direct children of postId
+  // would silently strand part 3 onwards at the old publishDate.
+  private async getThreadChainIds(rootId: string): Promise<string[]> {
+    const ids = [rootId];
+    let currentId = rootId;
+
+    for (;;) {
+      const child = await this._post.model.post.findFirst({
+        where: { parentPostId: currentId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!child) break;
+      ids.push(child.id);
+      currentId = child.id;
+    }
+
+    return ids;
+  }
+
+  // Moves a root post AND every part of its thread to the same new
+  // publishDate, so a thread stays intact instead of being scattered
+  // across slots when only its root row is considered "invalid".
   async updatePostAndChildrenPublishDate(postId: string, newPublishDate: Date) {
+    const ids = await this.getThreadChainIds(postId);
     return this._post.model.post.updateMany({
       where: {
-        OR: [{ id: postId }, { parentPostId: postId }],
+        id: { in: ids },
       },
       data: {
         publishDate: newPublishDate,
