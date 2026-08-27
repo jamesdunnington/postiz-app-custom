@@ -649,6 +649,11 @@ export class PostsRepository {
                 },
               },
               content: value.content,
+              // Must match the create branch's group id: without this, an
+              // existing part being re-saved keeps its OLD group id, and the
+              // old-group cleanup below then deletes it as a "leftover" -
+              // even though it was just correctly resubmitted this save.
+              group: uuid,
               intervalInDays: inter ? +inter : null,
               approvedSubmitForOrder: APPROVED_SUBMIT_FOR_ORDER.NO,
               state: state === 'draft' ? ('DRAFT' as const) : ('QUEUE' as const),
