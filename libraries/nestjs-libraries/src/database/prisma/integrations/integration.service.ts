@@ -1468,8 +1468,10 @@ export class IntegrationService {
               continue;
             }
 
-            // Update the post's publish date
-            await this._postsRepository.updatePostPublishDate(post.id, newSlot);
+            // Update the post's publish date, and move any thread parts
+            // (child posts sharing this root's publishDate) along with it
+            // so the thread stays intact instead of being scattered.
+            await this._postsRepository.updatePostAndChildrenPublishDate(post.id, newSlot);
             usedSlots.add(slotTimestamp);
 
             // Delete old BullMQ job and re-queue the post in the worker

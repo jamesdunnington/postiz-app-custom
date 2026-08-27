@@ -1196,6 +1196,20 @@ export class PostsRepository {
     });
   }
 
+  // Moves a root post AND every thread part under it (parentPostId === postId)
+  // to the same new publishDate, so a thread stays intact instead of being
+  // scattered across slots when only its root row is considered "invalid".
+  async updatePostAndChildrenPublishDate(postId: string, newPublishDate: Date) {
+    return this._post.model.post.updateMany({
+      where: {
+        OR: [{ id: postId }, { parentPostId: postId }],
+      },
+      data: {
+        publishDate: newPublishDate,
+      },
+    });
+  }
+
   async getNextAvailableSlots(
     orgId: string,
     integrationId: string,
@@ -1748,6 +1762,11 @@ export class PostsRepository {
       where: {
         state: 'QUEUE',
         deletedAt: null,
+        // Only root posts: a thread's own child parts share the parent's
+        // exact publishDate by design, so evaluating them independently
+        // here would flag every part as "invalid" and let the reschedule
+        // step below scatter them across different slots.
+        parentPostId: null,
         publishDate: {
           // Skip posts in the current hour to avoid interfering with posts being published
           // Add 1 hour buffer to prevent rescheduling posts that are about to be published
