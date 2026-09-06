@@ -87,7 +87,11 @@ export abstract class SocialAbstract {
       ignoreConcurrency
     );
 
-    if (request.status === 200 || request.status === 201) {
+    if (
+      request.status === 200 ||
+      request.status === 201 ||
+      request.status === 204
+    ) {
       return request;
     }
 

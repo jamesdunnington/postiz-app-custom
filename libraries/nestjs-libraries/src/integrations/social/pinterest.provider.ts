@@ -413,6 +413,24 @@ export class PinterestProvider
     ];
   }
 
+  async deletePin(
+    id: string,
+    accessToken: string,
+    pinId: string
+  ): Promise<{ success: boolean }> {
+    const response = await this.fetch(
+      `https://api.pinterest.com/v5/pins/${pinId}`,
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    );
+
+    return { success: response.status === 204 || response.status === 200 };
+  }
+
   async analytics(
     id: string,
     accessToken: string,
