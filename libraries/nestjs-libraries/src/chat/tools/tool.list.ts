@@ -13,6 +13,7 @@ import { IntegrationDeletePostTool } from '@gitroom/nestjs-libraries/chat/tools/
 import { IntegrationEditPostDateTool } from '@gitroom/nestjs-libraries/chat/tools/integration.edit.post.date.tool';
 import { IntegrationEditPostContentTool } from '@gitroom/nestjs-libraries/chat/tools/integration.edit.post.content.tool';
 import { IntegrationAnalyticsTool } from '@gitroom/nestjs-libraries/chat/tools/integration.analytics.tool';
+import { PinterestBulkDeletePinsTool } from '@gitroom/nestjs-libraries/chat/tools/pinterest.bulk.delete.pins.tool';
 
 export const toolList = [
   IntegrationListTool,
@@ -30,4 +31,5 @@ export const toolList = [
   IntegrationEditPostDateTool,
   IntegrationEditPostContentTool,
   IntegrationAnalyticsTool,
+  PinterestBulkDeletePinsTool,
 ];
