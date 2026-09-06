@@ -19,8 +19,9 @@ assumed or required.
 
 ## Scope decisions (confirmed during brainstorming)
 
-- Input sources: both (a) manual paste-list/CSV-upload in a new UI tab, and
-  (b) a public API endpoint for the external tool to submit programmatically.
+- Input sources: (a) manual paste-list/CSV-upload in a new UI tab, (b) a
+  public API endpoint for the external tool to submit programmatically, and
+  (c) an MCP tool so the Postiz AI agent/MCP clients can submit a batch too.
 - Every submission is tied to one Pinterest account, explicitly selected
   (dropdown of the org's connected Pinterest integrations) — never inferred.
 - A submission batch is capped at 100 pins.
@@ -81,7 +82,7 @@ model PinterestDeleteBatch {
   organizationId   String
   integrationId    String
   createdByUserId  String?
-  source           String    // "MANUAL" | "API"
+  source           String    // "MANUAL" | "API" | "MCP"
   submittedCount   Int
   createdAt        DateTime  @default(now())
 
@@ -143,13 +144,39 @@ One shared service method creates a batch, regardless of source:
 - Enqueues one BullMQ job per item onto a new `pinterest-delete-pin` queue,
   each carrying `{ itemId }`.
 
-Two entry points call this same method:
+Three entry points call this same method:
 
 1. **UI**: new tab, described below.
 2. **Public API**: new authenticated route (same auth pattern as the
    existing public API under `apps/backend/src/api/routes/public.controller.ts`
    / SDK), e.g. `POST /public/v1/pinterest/delete-batch` with
    `{ integrationId, pins: string[] }`.
+3. **MCP tool**: new `PinterestBulkDeletePinsTool` (implements
+   `AgentToolInterface`, built with `createTool` from `@mastra/core/tools`),
+   following the exact pattern of the existing tools in
+   `libraries/nestjs-libraries/src/chat/tools/` (e.g.
+   `integration.delete.post.tool.ts`, `integration.schedule.post.ts`) and
+   registered in `tool.list.ts`'s `toolList` array — this is what actually
+   exposes it through the Postiz MCP server, the same mechanism that already
+   exposes `integrationDeletePostTool`, `integrationSchedulePostTool`, etc.
+   - `inputSchema`: `{ integrationId: string, pins: string[] }` (`pins` capped
+     at 100, validated by the shared service, not re-validated in the tool).
+   - `organizationId` comes from `runtimeContext`, same as every other tool
+     (see `checkAuth` / `runtimeContext.get('organization')` in
+     `integration.delete.post.tool.ts`).
+   - `outputSchema`: `{ output: { batchId: string, submittedCount: number,
+     queuedNow: number, waitingForQuota: number } }` — enough for the agent
+     to tell the user what happened without needing a separate status tool.
+   - Description text carries the same explicit-confirmation warning
+     `integrationDeletePostTool` already uses ("irreversible — always
+     confirm with the user which pins/account before calling this"), since
+     this permanently deletes real Pinterest pins.
+   - Sets `source: "MCP"` on the created batch, distinguishing agent-
+     initiated batches from external-script (`"API"`) and UI (`"MANUAL"`)
+     ones in the history view.
+   - Out of scope for this pass: a companion read/status MCP tool. The
+     dedicated UI tab is the monitoring surface; add an MCP status tool
+     later only if actually needed.
 
 ## Data retention (self-cleansing)
 
