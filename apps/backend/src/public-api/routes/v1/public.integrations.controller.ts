@@ -31,6 +31,8 @@ import axios from 'axios';
 import { Readable } from 'stream';
 import { lookup } from 'mime-types';
 import * as Sentry from '@sentry/nestjs';
+import { PinterestDeleteService } from '@gitroom/nestjs-libraries/database/prisma/pinterest-delete/pinterest-delete.service';
+import { PinterestDeleteBatchDto } from '@gitroom/nestjs-libraries/dtos/pinterest-delete/pinterest.delete.batch.dto';
 
 @ApiTags('Public API')
 @Controller('/public/v1')
@@ -40,8 +42,24 @@ export class PublicIntegrationsController {
   constructor(
     private _integrationService: IntegrationService,
     private _postsService: PostsService,
-    private _mediaService: MediaService
+    private _mediaService: MediaService,
+    private _pinterestDeleteService: PinterestDeleteService
   ) {}
+
+  @Post('/pinterest/delete-batch')
+  async pinterestDeleteBatch(
+    @GetOrgFromRequest() org: Organization,
+    @Body() body: PinterestDeleteBatchDto
+  ) {
+    Sentry.metrics.count('public_api-request', 1);
+    return this._pinterestDeleteService.createBatch(
+      org.id,
+      body.integrationId,
+      null,
+      'API',
+      body.pins
+    );
+  }
 
   @Post('/upload')
   @UseInterceptors(FileInterceptor('file'))
