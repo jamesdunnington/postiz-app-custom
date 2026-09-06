@@ -101,9 +101,11 @@ export class PinterestDeleteService {
       item.integrationId
     );
     if (!reservation.allowed) {
+      // reservation.scheduledFor is always set when allowed is false —
+      // guaranteed by reserveQuotaSlot's implementation.
       await this._repository.markItemWaitingForQuota(
         itemId,
-        reservation.scheduledFor
+        reservation.scheduledFor!
       );
       return;
     }
@@ -112,13 +114,13 @@ export class PinterestDeleteService {
       const accessToken = await this.getValidAccessToken(item.integration);
       const provider =
         this._integrationManager.getSocialIntegration('pinterest');
-      const result = await provider.deletePin(
+      const result = await provider.deletePin?.(
         item.integration.internalId,
         accessToken,
         item.pinId
       );
 
-      if (!result.success) {
+      if (!result?.success) {
         await this._repository.releaseQuotaSlot(item.integrationId);
         await this._repository.markItemFailed(
           itemId,

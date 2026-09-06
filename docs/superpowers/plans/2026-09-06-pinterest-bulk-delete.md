@@ -1635,6 +1635,36 @@ git add -A
 git commit -m "fix: address issues found during manual verification of Pinterest bulk delete"
 ```
 
+## Post-implementation CI fixes (2026-09-06)
+
+The first CI build (GitHub Actions `Build and Push Docker Image`) failed
+`nest build` with 2 TypeScript errors this plan's authoring couldn't catch
+without a real compiler (per Global Constraints, nothing here was
+build-verified before pushing). Both are fixed in the merged code; recorded
+here so the plan stays an accurate account of what was actually shipped:
+
+1. **`ISocialMediaIntegration` had no `deletePin` method.** Task 3 added
+   `deletePin()` only to the concrete `PinterestProvider` class, but Task
+   5's service resolves the provider through
+   `IntegrationManager.getSocialIntegration('pinterest'): SocialProvider`,
+   which is typed by the shared interface — so `provider.deletePin(...)`
+   didn't compile. Fixed by adding `deletePin?(...)` as an **optional**
+   method on `ISocialMediaIntegration`
+   (`social.integrations.interface.ts`), matching the existing convention
+   for provider-specific capabilities (`analytics?`, `changeNickname?`,
+   etc.), and calling it via `provider.deletePin?.(...)` /
+   `result?.success` in the service.
+2. **`reserveQuotaSlot`'s discriminated union didn't narrow.** The
+   annotated return type `{ allowed: true } | { allowed: false;
+   scheduledFor: Date }` failed to narrow at the `reservation.scheduledFor`
+   call site even inside `if (!reservation.allowed)` — this repo runs with
+   `strictNullChecks: false` (per `CLAUDE.md`), under which TypeScript's
+   discriminated-union narrowing is measurably weaker. Fixed by changing
+   the return type to a single shape, `{ allowed: boolean; scheduledFor?:
+   Date }`, and using a non-null assertion (`reservation.scheduledFor!`) at
+   the one call site where business logic guarantees it's set — sidesteps
+   narrowing entirely instead of fighting the compiler setting.
+
 ## Self-Review Notes
 
 - **Spec coverage:** every section of the spec (data model, ingestion — all 3 entry points, daily cap + throttle sharing, queue mechanics, retention/self-cleansing, frontend, MCP tool) has a corresponding task above. The spec's "Testing" section is covered by Task 2 (pure logic) + Task 12 (manual checklist), with the daily-cap unit-test line explicitly downgraded to manual verification per Global Constraints, for the reasons stated there.

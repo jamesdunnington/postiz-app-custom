@@ -124,7 +124,7 @@ export class PinterestDeleteRepository {
   // SELECT-then-UPDATE would race under BullMQ's worker concurrency.
   async reserveQuotaSlot(
     integrationId: string
-  ): Promise<{ allowed: true } | { allowed: false; scheduledFor: Date }> {
+  ): Promise<{ allowed: boolean; scheduledFor?: Date }> {
     const now = new Date();
     const windowCutoff = new Date(now.getTime() - WINDOW_MS);
 

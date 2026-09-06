@@ -84,6 +84,11 @@ export interface ISocialMediaIntegration {
     postDetails: PostDetails[],
     integration: Integration
   ): Promise<PostResponse[]>; // Schedules a new post
+  deletePin?(
+    id: string,
+    accessToken: string,
+    pinId: string
+  ): Promise<{ success: boolean }>;
 }
 
 export type PostResponse = {
