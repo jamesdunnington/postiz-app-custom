@@ -30,7 +30,8 @@ assumed or required.
   time. A new submission for an account that already has an active backlog
   appends to it rather than starting a second parallel run.
 - Batch history is persisted and stays reviewable in the tab, not just the
-  live run.
+  live run — but retention is bounded, not indefinite (see "Data retention"
+  below): only the 2 most recent batches per account are kept at all.
 - **Daily safety cap**: no more than 100 pins may actually be deleted for a
   given Pinterest account within a rolling 24-hour window. This is a hard
   safeguard against triggering Pinterest anti-spam/ban detection, independent
@@ -102,12 +103,16 @@ model PinterestDeleteItem {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  batch          PinterestDeleteBatch @relation(fields: [batchId], references: [id])
+  batch          PinterestDeleteBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
   integration    Integration          @relation(fields: [integrationId], references: [id])
 
   @@index([integrationId, status])
 }
 ```
+
+`onDelete: Cascade` on the `batch` relation is required by the retention
+policy below — deleting a `PinterestDeleteBatch` row must remove its
+`PinterestDeleteItem` children in the same operation.
 
 Additions to `Integration`:
 
@@ -145,6 +150,40 @@ Two entry points call this same method:
    existing public API under `apps/backend/src/api/routes/public.controller.ts`
    / SDK), e.g. `POST /public/v1/pinterest/delete-batch` with
    `{ integrationId, pins: string[] }`.
+
+## Data retention (self-cleansing)
+
+There is no intention to retain deletion-batch data long-term: **only the 2
+most recently submitted batches are kept per Pinterest account.** When a 3rd
+(or later) batch is submitted for an account, the oldest batch beyond those
+2 is purged immediately — this is a hard cap on stored history, not an
+archival/expiry job.
+
+- Implemented inside `PinterestDeleteService.createBatch()`, in the same
+  transaction that creates the new batch + items: after insert, fetch that
+  integration's `PinterestDeleteBatch` ids ordered by `createdAt desc`,
+  keep the first 2, delete the rest. The `onDelete: Cascade` on
+  `PinterestDeleteItem.batch` removes their items automatically.
+- **This purge is unconditional — it does not check item status first.** If
+  the purged batch still had pins in `PENDING`, `QUEUED`, or
+  `WAITING_FOR_QUOTA`, those rows are deleted along with the batch and those
+  pins are never deleted from Pinterest. This is a deliberate data-
+  minimization choice (confirmed during brainstorming), not an oversight:
+  the product intent is "no more than 2 batches' worth of data ever
+  persisted," full stop, even at the cost of abandoning a stale unfinished
+  batch that a 3rd submission pushes out.
+- Consequence for the `pinterest-delete-pin` job handler: an in-flight job
+  may reference an `itemId` that no longer exists because its batch was
+  purged after the job was enqueued but before it ran. The handler must
+  treat "item not found" as a clean no-op (log and exit, no retry, no
+  error) rather than throwing.
+- Consequence for the quota-recovery cron sweep: it naturally skips purged
+  items since they no longer exist in the table — no special-casing needed
+  there.
+- This retention rule is independent of the daily cap on `Integration`
+  (`pinDeleteWindowCount` / `pinDeleteLastAt`) — those two fields are not
+  batch data and are never purged; they persist for the life of the
+  integration.
 
 ## Daily cap + per-call throttling (the safety core)
 
@@ -239,9 +278,10 @@ Two independent layers, both must pass before a pin is actually deleted:
     at [timestamp]" banner so this reads as a deliberate safeguard, not a
     broken feature. A distinct "stalled" indicator (separate from the quota
     banner) if the health check above trips.
-  - History list below: past batches for the selected account
-    (`createdAt`, `submittedCount`, computed removed/failed counts),
-    expandable to see individual pin-level failures.
+  - History list below: the (at most 2) retained batches for the selected
+    account (`createdAt`, `submittedCount`, computed removed/failed counts),
+    expandable to see individual pin-level failures. No pagination needed
+    given the 2-batch retention cap.
 
 ## Testing
 
@@ -251,6 +291,12 @@ Two independent layers, both must pass before a pin is actually deleted:
 - Unit tests for pin ID/URL parsing (bare ID, full URL, trailing
   slash/query params, invalid input rejected).
 - Unit test for the 100-pins-per-submission validation.
+- Unit test for the retention purge: submitting a 3rd batch for an account
+  deletes the oldest batch and cascades its items, regardless of their
+  status (including one still `WAITING_FOR_QUOTA`); the 2 most recent
+  batches are untouched.
+- Unit test that the `pinterest-delete-pin` job handler exits cleanly
+  (no throw, no retry) when its `itemId` no longer exists.
 - Manual end-to-end pass against a real (test) Pinterest account through the
   new tab: submit a small batch, watch it drain, verify deleted pins are
   actually gone on Pinterest, verify history view after completion.
