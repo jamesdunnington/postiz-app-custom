@@ -42,6 +42,7 @@ model Organization {
   sets              Sets[]
   thirdParty        ThirdParty[]
   errors            Errors[]
+  pinDeleteBatches  PinterestDeleteBatch[]
 }
 
 model Tags {
@@ -335,6 +336,10 @@ model Integration {
   rootInternalId        String?
   additionalSettings    String?                @default("[]")
   webhooks              IntegrationsWebhooks[]
+  pinDeleteWindowCount  Int                    @default(0)
+  pinDeleteLastAt       DateTime?
+  pinDeleteBatches      PinterestDeleteBatch[]
+  pinDeleteItems        PinterestDeleteItem[]
 
   @@unique([organizationId, internalId])
   @@index([rootInternalId])
@@ -733,4 +738,40 @@ enum APPROVED_SUBMIT_FOR_ORDER {
   NO
   WAITING_CONFIRMATION
   YES
+}
+
+model PinterestDeleteBatch {
+  id              String    @id @default(uuid())
+  organizationId  String
+  integrationId   String
+  createdByUserId String?
+  source          String // "MANUAL" | "API" | "MCP"
+  submittedCount  Int
+  createdAt       DateTime  @default(now())
+
+  organization Organization          @relation(fields: [organizationId], references: [id])
+  integration  Integration           @relation(fields: [integrationId], references: [id])
+  items        PinterestDeleteItem[]
+
+  @@index([integrationId, createdAt])
+}
+
+model PinterestDeleteItem {
+  id            String    @id @default(uuid())
+  batchId       String
+  integrationId String
+  pinId         String
+  rawInput      String
+  status        String // "PENDING" | "QUEUED" | "REMOVED" | "FAILED" | "WAITING_FOR_QUOTA"
+  scheduledFor  DateTime?
+  errorMessage  String?
+  processedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  batch       PinterestDeleteBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  integration Integration          @relation(fields: [integrationId], references: [id])
+
+  @@index([integrationId, status])
+  @@index([status, scheduledFor])
 }
