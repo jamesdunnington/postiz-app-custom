@@ -11,6 +11,7 @@ import { CheckDuplicateSchedules } from '@gitroom/cron/tasks/check.duplicate.sch
 import { CheckInvalidTimeSlots } from '@gitroom/cron/tasks/check.invalid.timeslots';
 import { SyncBullMqJobs } from '@gitroom/cron/tasks/sync.bullmq.jobs';
 import { CleanupOrphanedMediaStartup } from '@gitroom/cron/tasks/cleanup.orphaned.media.startup';
+import { RecoverPinterestDeleteQuota } from '@gitroom/cron/tasks/recover.pinterest.delete.quota';
 
 @Module({
   imports: [
@@ -20,6 +21,6 @@ import { CleanupOrphanedMediaStartup } from '@gitroom/cron/tasks/cleanup.orphane
     BullMqModule,
   ],
   controllers: [],
-  providers: [FILTER, CheckMissingQueues, PostNowPendingQueues, RescheduleMissedPostsStartup, CheckDuplicateSchedules, CheckInvalidTimeSlots, SyncBullMqJobs, CleanupOrphanedMediaStartup],
+  providers: [FILTER, CheckMissingQueues, PostNowPendingQueues, RescheduleMissedPostsStartup, CheckDuplicateSchedules, CheckInvalidTimeSlots, SyncBullMqJobs, CleanupOrphanedMediaStartup, RecoverPinterestDeleteQuota],
 })
 export class CronModule {}
