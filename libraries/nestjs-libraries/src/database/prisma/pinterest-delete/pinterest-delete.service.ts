@@ -11,7 +11,7 @@ import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/in
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import { BullMqClient } from '@gitroom/nestjs-libraries/bull-mq-transport-new/client';
 
-const RETENTION_LIMIT = 2;
+const RETENTION_LIMIT = 10;
 // Two rolling 24h windows' worth of pins (see DAILY_CAP in
 // pinterest-delete.repository.ts) — a batch this size spans ~2 days of
 // deletions rather than trying to push everything through at once.
