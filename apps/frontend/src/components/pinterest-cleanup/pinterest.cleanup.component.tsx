@@ -4,6 +4,10 @@ import { useCallback, useMemo, useState } from 'react';
 import useSWR from 'swr';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { useToaster } from '@gitroom/react/toaster/toaster';
+import { Button } from '@gitroom/react/form/button';
+import { Select } from '@gitroom/react/form/select';
+import { Input } from '@gitroom/react/form/input';
+import { Textarea } from '@gitroom/react/form/textarea';
 
 interface IntegrationListItem {
   id: string;
@@ -25,7 +29,14 @@ interface PinterestDeleteBatchSummary {
   items: PinterestDeleteItemSummary[];
 }
 
-const MAX_PINS = 100;
+// Hard ceiling enforced by the backend too (see MAX_PINS_PER_BATCH in
+// pinterest-delete.service.ts) — two rolling 24h windows' worth of pins.
+const ABSOLUTE_MAX_PINS = 200;
+const DEFAULT_MAX_PINS = 100;
+// Actual per-account deletions allowed per rolling 24h window (DAILY_CAP in
+// pinterest-delete.repository.ts). Not a calendar-day reset — deletions from
+// any earlier batch (or MCP/API call) in the last 24h count against it too.
+const DAILY_RATE_LIMIT = 100;
 
 function summarize(items: PinterestDeleteItemSummary[]) {
   return {
@@ -42,7 +53,14 @@ export const PinterestCleanupComponent = () => {
   const toaster = useToaster();
   const [selectedIntegrationId, setSelectedIntegrationId] = useState('');
   const [pinsText, setPinsText] = useState('');
+  const [maxPinsInput, setMaxPinsInput] = useState(String(DEFAULT_MAX_PINS));
   const [submitting, setSubmitting] = useState(false);
+
+  const maxPins = useMemo(() => {
+    const parsed = parseInt(maxPinsInput, 10);
+    if (!Number.isFinite(parsed)) return DEFAULT_MAX_PINS;
+    return Math.min(ABSOLUTE_MAX_PINS, Math.max(1, parsed));
+  }, [maxPinsInput]);
 
   const { data: integrationsData } = useSWR('integrations', async () =>
     (await fetch('/integrations/list')).json()
@@ -80,6 +98,10 @@ export const PinterestCleanupComponent = () => {
     [pinsText]
   );
 
+  const onMaxPinsBlur = useCallback(() => {
+    setMaxPinsInput(String(maxPins));
+  }, [maxPins]);
+
   const onSubmit = useCallback(async () => {
     const pins = pinsText
       .split('\n')
@@ -91,8 +113,8 @@ export const PinterestCleanupComponent = () => {
       return;
     }
 
-    if (pins.length === 0 || pins.length > MAX_PINS) {
-      toaster.show(`Paste between 1 and ${MAX_PINS} pins`, 'warning');
+    if (pins.length === 0 || pins.length > maxPins) {
+      toaster.show(`Paste between 1 and ${maxPins} pins`, 'warning');
       return;
     }
 
@@ -115,7 +137,7 @@ export const PinterestCleanupComponent = () => {
     } finally {
       setSubmitting(false);
     }
-  }, [pinsText, selectedIntegrationId, fetch, toaster, mutateBatches]);
+  }, [pinsText, selectedIntegrationId, maxPins, fetch, toaster, mutateBatches]);
 
   const batches = batchesData || [];
   const nextQuotaResume = batches
@@ -125,7 +147,7 @@ export const PinterestCleanupComponent = () => {
     .sort()[0];
 
   return (
-    <div className="flex flex-col gap-4 p-6 text-white">
+    <div className="flex flex-col gap-4 p-6 text-textColor">
       <div className="text-xl font-semibold">Pinterest Pin Cleanup</div>
 
       {pinterestIntegrations.length === 0 && (
@@ -134,8 +156,10 @@ export const PinterestCleanupComponent = () => {
 
       {pinterestIntegrations.length > 0 && (
         <>
-          <select
-            className="bg-black border border-white/20 rounded p-2"
+          <Select
+            label="Pinterest account"
+            name="integrationId"
+            disableForm={true}
             value={selectedIntegrationId}
             onChange={(e) => setSelectedIntegrationId(e.target.value)}
           >
@@ -145,37 +169,70 @@ export const PinterestCleanupComponent = () => {
                 {integration.name}
               </option>
             ))}
-          </select>
+          </Select>
 
-          <textarea
-            className="bg-black border border-white/20 rounded p-2 min-h-[160px]"
-            placeholder="Paste one pin id or Pinterest pin URL per line (up to 100)"
+          <div className="max-w-[220px]">
+            <Input
+              label="Max pins per submission"
+              name="maxPins"
+              type="number"
+              disableForm={true}
+              removeError={true}
+              min={1}
+              max={ABSOLUTE_MAX_PINS}
+              value={maxPinsInput}
+              onChange={(e) => setMaxPinsInput(e.target.value)}
+              onBlur={onMaxPinsBlur}
+            />
+          </div>
+
+          <Textarea
+            label="Pins to delete"
+            name="pins"
+            disableForm={true}
+            className="min-h-[160px]"
+            placeholder={`Paste one pin id or Pinterest pin URL per line (up to ${maxPins})`}
             value={pinsText}
             onChange={(e) => setPinsText(e.target.value)}
           />
 
+          {maxPins > DAILY_RATE_LIMIT && (
+            <div className="text-[12px] text-customColor18">
+              Batches over {DAILY_RATE_LIMIT} pins will span more than one
+              day: only {DAILY_RATE_LIMIT} deletions run per rolling 24-hour
+              window per Pinterest account. The rest are queued automatically
+              and processed once the window rolls forward — this keeps
+              deletions from looking spammy to Pinterest.
+            </div>
+          )}
+
           <div className="flex items-center gap-3">
             <div>
-              {pinCount}/{MAX_PINS} pins
+              {pinCount}/{maxPins} pins
             </div>
-            <button
-              className="bg-blue-600 text-white rounded px-4 py-2 disabled:opacity-50"
+            <Button
               disabled={
                 submitting ||
                 !selectedIntegrationId ||
                 pinCount === 0 ||
-                pinCount > MAX_PINS
+                pinCount > maxPins
               }
+              loading={submitting}
               onClick={onSubmit}
             >
               Submit for deletion
-            </button>
+            </Button>
           </div>
 
           {nextQuotaResume && (
-            <div className="bg-yellow-900 text-yellow-200 rounded p-3">
+            <div className="bg-orange-950/40 border border-orange-800 text-orange-200 rounded p-3">
               Daily deletion limit reached for this account — resumes at{' '}
               {new Date(nextQuotaResume).toLocaleString()}.
+              <div className="text-[12px] mt-1 opacity-80">
+                This is a rolling 24-hour window, not a fixed daily reset —
+                it counts every deletion for this account in the last 24
+                hours, including from earlier batches.
+              </div>
             </div>
           )}
 
@@ -188,7 +245,10 @@ export const PinterestCleanupComponent = () => {
               {batches.map((batch) => {
                 const counts = summarize(batch.items);
                 return (
-                  <div key={batch.id} className="border border-white/20 rounded p-3">
+                  <div
+                    key={batch.id}
+                    className="border border-newTableBorder bg-newBgColorInner rounded p-3"
+                  >
                     <div>
                       {new Date(batch.createdAt).toLocaleString()} —{' '}
                       {batch.submittedCount} submitted ({batch.source})

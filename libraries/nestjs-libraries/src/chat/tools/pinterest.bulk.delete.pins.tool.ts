@@ -13,7 +13,7 @@ export class PinterestBulkDeletePinsTool implements AgentToolInterface {
   run() {
     return createTool({
       id: 'pinterestBulkDeletePinsTool',
-      description: `Submits up to 100 Pinterest pins (by id or URL) for permanent deletion from a specific connected Pinterest account. This is irreversible and rate-limited (at most 100 actual deletions per account per rolling 24 hours; extra pins wait for the next window automatically) — always confirm with the user exactly which pins and which Pinterest account before calling this.`,
+      description: `Submits up to 200 Pinterest pins (by id or URL) for permanent deletion from a specific connected Pinterest account. This is irreversible and rate-limited (at most 100 actual deletions per account per rolling 24 hours; a 200-pin call spans roughly 2 days as a result — extra pins wait for the next window automatically) — always confirm with the user exactly which pins and which Pinterest account before calling this.`,
       inputSchema: z.object({
         integrationId: z
           .string()
@@ -22,9 +22,9 @@ export class PinterestBulkDeletePinsTool implements AgentToolInterface {
           ),
         pins: z
           .array(z.string())
-          .max(100)
+          .max(200)
           .describe(
-            'Pinterest pin ids or pin URLs to delete, up to 100 per call'
+            'Pinterest pin ids or pin URLs to delete, up to 200 per call (only 100 actually delete per rolling 24h window; the rest queue for the next window)'
           ),
       }),
       outputSchema: z.object({

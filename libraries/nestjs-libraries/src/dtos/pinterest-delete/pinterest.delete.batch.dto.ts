@@ -11,7 +11,7 @@ export class PinterestDeleteBatchDto {
 
   @IsArray()
   @ArrayMinSize(1)
-  @ArrayMaxSize(100)
+  @ArrayMaxSize(200)
   @IsString({ each: true })
   pins: string[];
 }

@@ -12,7 +12,10 @@ import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integ
 import { BullMqClient } from '@gitroom/nestjs-libraries/bull-mq-transport-new/client';
 
 const RETENTION_LIMIT = 2;
-const MAX_PINS_PER_BATCH = 100;
+// Two rolling 24h windows' worth of pins (see DAILY_CAP in
+// pinterest-delete.repository.ts) — a batch this size spans ~2 days of
+// deletions rather than trying to push everything through at once.
+const MAX_PINS_PER_BATCH = 200;
 
 @Injectable()
 export class PinterestDeleteService {
