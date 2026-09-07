@@ -210,6 +210,32 @@ export class PinterestProvider
     return allBoards;
   }
 
+  // Uses this.fetch (not the raw fetch() boards() above uses) so board
+  // creation shares the same global, rate-limit-aware queue as every other
+  // Pinterest call this app makes — including pin deletion — instead of
+  // racing it against Pinterest's real API limits.
+  async createBoard(
+    id: string,
+    accessToken: string,
+    board: { name: string; description?: string; isPrivate?: boolean }
+  ): Promise<{ id: string }> {
+    const response = await this.fetch('https://api.pinterest.com/v5/boards', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: board.name,
+        description: board.description || '',
+        privacy: board.isPrivate ? 'SECRET' : 'PUBLIC',
+      }),
+    });
+
+    const created = await response.json();
+    return { id: created.id };
+  }
+
   async post(
     id: string,
     accessToken: string,

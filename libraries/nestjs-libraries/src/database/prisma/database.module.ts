@@ -47,6 +47,7 @@ import { GlobalSettingsService } from '@gitroom/nestjs-libraries/database/prisma
 import { LlmConfigService } from '@gitroom/nestjs-libraries/llm/llm-config.service';
 import { PinterestDeleteService } from '@gitroom/nestjs-libraries/database/prisma/pinterest-delete/pinterest-delete.service';
 import { PinterestDeleteRepository } from '@gitroom/nestjs-libraries/database/prisma/pinterest-delete/pinterest-delete.repository';
+import { PinterestBoardsService } from '@gitroom/nestjs-libraries/database/prisma/pinterest-boards/pinterest-boards.service';
 
 @Global()
 @Module({
@@ -103,6 +104,7 @@ import { PinterestDeleteRepository } from '@gitroom/nestjs-libraries/database/pr
     LlmConfigService,
     PinterestDeleteService,
     PinterestDeleteRepository,
+    PinterestBoardsService,
   ],
   get exports() {
     return this.providers;

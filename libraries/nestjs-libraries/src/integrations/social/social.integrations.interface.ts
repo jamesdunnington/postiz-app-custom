@@ -89,6 +89,11 @@ export interface ISocialMediaIntegration {
     accessToken: string,
     pinId: string
   ): Promise<{ success: boolean }>;
+  createBoard?(
+    id: string,
+    accessToken: string,
+    board: { name: string; description?: string; isPrivate?: boolean }
+  ): Promise<{ id: string }>;
 }
 
 export type PostResponse = {

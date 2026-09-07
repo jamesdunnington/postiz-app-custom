@@ -36,6 +36,7 @@ import { ThirdPartyController } from '@gitroom/backend/api/routes/third-party.co
 import { MonitorController } from '@gitroom/backend/api/routes/monitor.controller';
 import { PublishingController } from '@gitroom/backend/api/routes/publishing.controller';
 import { PinterestDeleteController } from '@gitroom/backend/api/routes/pinterest-delete.controller';
+import { PinterestBoardsController } from '@gitroom/backend/api/routes/pinterest-boards.controller';
 
 const authenticatedController = [
   UsersController,
@@ -57,6 +58,7 @@ const authenticatedController = [
   ThirdPartyController,
   PublishingController,
   PinterestDeleteController,
+  PinterestBoardsController,
 ];
 @Module({
   imports: [UploadModule],
