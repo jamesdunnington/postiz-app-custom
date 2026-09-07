@@ -1,18 +1,27 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
+import { orderBy } from 'lodash';
+import clsx from 'clsx';
+import Image from 'next/image';
+import useCookie from 'react-use-cookie';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { useToaster } from '@gitroom/react/toaster/toaster';
 import { Button } from '@gitroom/react/form/button';
-import { Select } from '@gitroom/react/form/select';
 import { Input } from '@gitroom/react/form/input';
 import { Textarea } from '@gitroom/react/form/textarea';
+import ImageWithFallback from '@gitroom/react/helpers/image.with.fallback';
+import { SVGLine } from '@gitroom/frontend/components/launches/launches.component';
 
 interface IntegrationListItem {
   id: string;
   name: string;
   identifier: string;
+  picture: string;
+  disabled?: boolean;
+  refreshNeeded?: boolean;
+  inBetweenSteps?: boolean;
 }
 
 interface PinterestDeleteItemSummary {
@@ -51,6 +60,7 @@ function summarize(items: PinterestDeleteItemSummary[]) {
 export const PinterestCleanupComponent = () => {
   const fetch = useFetch();
   const toaster = useToaster();
+  const [collapseMenu, setCollapseMenu] = useCookie('collapseMenu', '0');
   const [selectedIntegrationId, setSelectedIntegrationId] = useState('');
   const [pinsText, setPinsText] = useState('');
   const [maxPinsInput, setMaxPinsInput] = useState(String(DEFAULT_MAX_PINS));
@@ -68,11 +78,27 @@ export const PinterestCleanupComponent = () => {
 
   const pinterestIntegrations: IntegrationListItem[] = useMemo(
     () =>
-      (integrationsData?.integrations || []).filter(
-        (i: IntegrationListItem) => i.identifier === 'pinterest'
+      orderBy(
+        (integrationsData?.integrations || []).filter(
+          (i: IntegrationListItem) => i.identifier === 'pinterest'
+        ),
+        ['name'],
+        ['asc']
       ),
     [integrationsData]
   );
+
+  // Keep a channel selected by default (matches the Calendar/Analytics
+  // sidebars), and drop the selection if that channel disappears.
+  useEffect(() => {
+    if (pinterestIntegrations.length === 0) {
+      if (selectedIntegrationId) setSelectedIntegrationId('');
+      return;
+    }
+    if (!pinterestIntegrations.some((i) => i.id === selectedIntegrationId)) {
+      setSelectedIntegrationId(pinterestIntegrations[0].id);
+    }
+  }, [pinterestIntegrations, selectedIntegrationId]);
 
   const { data: batchesData, mutate: mutateBatches } = useSWR<
     PinterestDeleteBatchSummary[]
@@ -147,96 +173,189 @@ export const PinterestCleanupComponent = () => {
     .sort()[0];
 
   return (
-    <div className="flex flex-col gap-4 p-6 text-textColor">
-      <div className="text-xl font-semibold">Pinterest Pin Cleanup</div>
-
-      {pinterestIntegrations.length === 0 && (
-        <div>Connect a Pinterest account first to use this tool.</div>
-      )}
-
-      {pinterestIntegrations.length > 0 && (
-        <>
-          <Select
-            label="Pinterest account"
-            name="integrationId"
-            disableForm={true}
-            value={selectedIntegrationId}
-            onChange={(e) => setSelectedIntegrationId(e.target.value)}
-          >
-            <option value="">Select a Pinterest account</option>
-            {pinterestIntegrations.map((integration) => (
-              <option key={integration.id} value={integration.id}>
-                {integration.name}
-              </option>
-            ))}
-          </Select>
-
-          <div className="max-w-[220px]">
-            <Input
-              label="Max pins per submission"
-              name="maxPins"
-              type="number"
-              disableForm={true}
-              removeError={true}
-              min={1}
-              max={ABSOLUTE_MAX_PINS}
-              value={maxPinsInput}
-              onChange={(e) => setMaxPinsInput(e.target.value)}
-              onBlur={onMaxPinsBlur}
-            />
+    <>
+      <div
+        className={clsx(
+          'bg-newBgColorInner p-[20px] flex flex-col gap-[15px] transition-all',
+          collapseMenu === '1' ? 'group sidebar w-[100px]' : 'w-[260px]'
+        )}
+      >
+        <div className="flex gap-[12px] flex-col">
+          <div className="flex items-center">
+            <h2 className="group-[.sidebar]:hidden flex-1 text-[20px] font-[500]">
+              Channels
+            </h2>
+            <div
+              onClick={() => setCollapseMenu(collapseMenu === '1' ? '0' : '1')}
+              className="group-[.sidebar]:rotate-[180deg] group-[.sidebar]:mx-auto text-btnText bg-btnSimple rounded-[6px] w-[24px] h-[24px] flex items-center justify-center cursor-pointer select-none"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="7"
+                height="13"
+                viewBox="0 0 7 13"
+                fill="none"
+              >
+                <path
+                  d="M6 11.5L1 6.5L6 1.5"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </div>
           </div>
 
-          <Textarea
-            label="Pins to delete"
-            name="pins"
-            disableForm={true}
-            className="min-h-[160px]"
-            placeholder={`Paste one pin id or Pinterest pin URL per line (up to ${maxPins})`}
-            value={pinsText}
-            onChange={(e) => setPinsText(e.target.value)}
-          />
-
-          {maxPins > DAILY_RATE_LIMIT && (
-            <div className="text-[12px] text-customColor18">
-              Batches over {DAILY_RATE_LIMIT} pins will span more than one
-              day: only {DAILY_RATE_LIMIT} deletions run per rolling 24-hour
-              window per Pinterest account. The rest are queued automatically
-              and processed once the window rolls forward — this keeps
-              deletions from looking spammy to Pinterest.
+          {pinterestIntegrations.length === 0 && (
+            <div className="group-[.sidebar]:hidden text-[12px] text-customColor18">
+              No Pinterest accounts connected yet.
             </div>
           )}
 
-          <div className="flex items-center gap-3">
-            <div>
-              {pinCount}/{maxPins} pins
-            </div>
-            <Button
-              disabled={
-                submitting ||
-                !selectedIntegrationId ||
-                pinCount === 0 ||
-                pinCount > maxPins
-              }
-              loading={submitting}
-              onClick={onSubmit}
+          {pinterestIntegrations.map((integration) => (
+            <div
+              key={integration.id}
+              onClick={() => {
+                if (integration.refreshNeeded) {
+                  toaster.show(
+                    'Please refresh the integration from the calendar',
+                    'warning'
+                  );
+                  return;
+                }
+                setSelectedIntegrationId(integration.id);
+              }}
+              className={clsx(
+                'flex gap-[12px] items-center group/profile justify-center hover:bg-boxHover rounded-e-[8px]',
+                selectedIntegrationId !== integration.id &&
+                  'opacity-20 hover:opacity-100 cursor-pointer'
+              )}
             >
-              Submit for deletion
-            </Button>
-          </div>
-
-          {nextQuotaResume && (
-            <div className="bg-orange-950/40 border border-orange-800 text-orange-200 rounded p-3">
-              Daily deletion limit reached for this account — resumes at{' '}
-              {new Date(nextQuotaResume).toLocaleString()}.
-              <div className="text-[12px] mt-1 opacity-80">
-                This is a rolling 24-hour window, not a fixed daily reset —
-                it counts every deletion for this account in the last 24
-                hours, including from earlier batches.
+              <div
+                className={clsx(
+                  'relative rounded-full flex justify-center items-center gap-[6px]',
+                  integration.disabled && 'opacity-50'
+                )}
+              >
+                {(integration.inBetweenSteps || integration.refreshNeeded) && (
+                  <div className="absolute start-0 top-0 w-[39px] h-[46px] cursor-pointer">
+                    <div className="bg-red-500 w-[15px] h-[15px] rounded-full start-0 -top-[5px] absolute z-[200] text-[10px] flex justify-center items-center">
+                      !
+                    </div>
+                    <div className="bg-primary/60 w-[39px] h-[46px] start-0 top-0 absolute rounded-full z-[199]" />
+                  </div>
+                )}
+                <div className="h-full w-[4px] -ms-[12px] rounded-s-[3px] opacity-0 group-hover/profile:opacity-100 transition-opacity">
+                  <SVGLine />
+                </div>
+                <ImageWithFallback
+                  fallbackSrc={`/icons/platforms/${integration.identifier}.png`}
+                  src={integration.picture}
+                  className="rounded-[8px]"
+                  alt={integration.identifier}
+                  width={36}
+                  height={36}
+                />
+                <Image
+                  src={`/icons/platforms/${integration.identifier}.png`}
+                  className="rounded-[8px] absolute z-10 bottom-[5px] -end-[5px] border border-fifth"
+                  alt={integration.identifier}
+                  width={18.41}
+                  height={18.41}
+                />
+              </div>
+              <div
+                className={clsx(
+                  'flex-1 whitespace-nowrap text-ellipsis overflow-hidden group-[.sidebar]:hidden',
+                  integration.disabled && 'opacity-50'
+                )}
+              >
+                {integration.name}
               </div>
             </div>
-          )}
+          ))}
+        </div>
+      </div>
 
-          {selectedIntegrationId && (
+      <div className="bg-newBgColorInner flex-1 flex flex-col gap-4 p-6 text-textColor">
+        <div className="text-xl font-semibold">Pinterest Pin Cleanup</div>
+
+        {pinterestIntegrations.length === 0 && (
+          <div>Connect a Pinterest account first to use this tool.</div>
+        )}
+
+        {pinterestIntegrations.length > 0 && !selectedIntegrationId && (
+          <div>Select a Pinterest account from the channels on the left.</div>
+        )}
+
+        {selectedIntegrationId && (
+          <>
+            <div className="max-w-[220px]">
+              <Input
+                label="Max pins per submission"
+                name="maxPins"
+                type="number"
+                disableForm={true}
+                removeError={true}
+                min={1}
+                max={ABSOLUTE_MAX_PINS}
+                value={maxPinsInput}
+                onChange={(e) => setMaxPinsInput(e.target.value)}
+                onBlur={onMaxPinsBlur}
+              />
+            </div>
+
+            <Textarea
+              label="Pins to delete"
+              name="pins"
+              disableForm={true}
+              className="min-h-[160px]"
+              placeholder={`Paste one pin id or Pinterest pin URL per line (up to ${maxPins})`}
+              value={pinsText}
+              onChange={(e) => setPinsText(e.target.value)}
+            />
+
+            {maxPins > DAILY_RATE_LIMIT && (
+              <div className="text-[12px] text-customColor18">
+                Batches over {DAILY_RATE_LIMIT} pins will span more than one
+                day: only {DAILY_RATE_LIMIT} deletions run per rolling 24-hour
+                window per Pinterest account. The rest are queued
+                automatically and processed once the window rolls forward —
+                this keeps deletions from looking spammy to Pinterest.
+              </div>
+            )}
+
+            <div className="flex items-center gap-3">
+              <div>
+                {pinCount}/{maxPins} pins
+              </div>
+              <Button
+                disabled={
+                  submitting ||
+                  !selectedIntegrationId ||
+                  pinCount === 0 ||
+                  pinCount > maxPins
+                }
+                loading={submitting}
+                onClick={onSubmit}
+              >
+                Submit for deletion
+              </Button>
+            </div>
+
+            {nextQuotaResume && (
+              <div className="bg-orange-950/40 border border-orange-800 text-orange-200 rounded p-3">
+                Daily deletion limit reached for this account — resumes at{' '}
+                {new Date(nextQuotaResume).toLocaleString()}.
+                <div className="text-[12px] mt-1 opacity-80">
+                  This is a rolling 24-hour window, not a fixed daily reset —
+                  it counts every deletion for this account in the last 24
+                  hours, including from earlier batches.
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-col gap-2">
               <div className="text-lg font-semibold">History</div>
               {batches.length === 0 && (
@@ -247,7 +366,7 @@ export const PinterestCleanupComponent = () => {
                 return (
                   <div
                     key={batch.id}
-                    className="border border-newTableBorder bg-newBgColorInner rounded p-3"
+                    className="border border-newTableBorder bg-sixth rounded p-3"
                   >
                     <div>
                       {new Date(batch.createdAt).toLocaleString()} —{' '}
@@ -262,9 +381,9 @@ export const PinterestCleanupComponent = () => {
                 );
               })}
             </div>
-          )}
-        </>
-      )}
-    </div>
+          </>
+        )}
+      </div>
+    </>
   );
 };
