@@ -58,7 +58,14 @@ class CloudflareStorage implements IUploadProvider {
   }
 
   async uploadSimple(path: string) {
-    const loadImage = await fetch(path);
+    // See LocalStorage.uploadSimple for why: some hosts reject requests
+    // with no User-Agent or an obviously non-browser one.
+    const loadImage = await fetch(path, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      },
+    });
     const contentType =
       loadImage?.headers?.get('content-type') ||
       loadImage?.headers?.get('Content-Type');

@@ -9,7 +9,17 @@ export class LocalStorage implements IUploadProvider {
   constructor(private uploadDirectory: string) {}
 
   async uploadSimple(path: string) {
-    const loadImage = await axios.get(path, { responseType: 'arraybuffer' });
+    // Some hosts (Wikimedia's CDN in particular, but this applies to any
+    // WAF/CDN-protected source) reject requests with no User-Agent or an
+    // obviously non-browser one. A standard browser UA gets through the
+    // same basic bot checks a real browser would pass.
+    const loadImage = await axios.get(path, {
+      responseType: 'arraybuffer',
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      },
+    });
     const contentType =
       loadImage?.headers?.['content-type'] ||
       loadImage?.headers?.['Content-Type'];
