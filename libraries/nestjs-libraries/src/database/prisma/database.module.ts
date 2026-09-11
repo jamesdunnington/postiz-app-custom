@@ -49,6 +49,8 @@ import { PinterestDeleteService } from '@gitroom/nestjs-libraries/database/prism
 import { PinterestDeleteRepository } from '@gitroom/nestjs-libraries/database/prisma/pinterest-delete/pinterest-delete.repository';
 import { PinterestBoardDeleteService } from '@gitroom/nestjs-libraries/database/prisma/pinterest-board-delete/pinterest-board-delete.service';
 import { PinterestBoardDeleteRepository } from '@gitroom/nestjs-libraries/database/prisma/pinterest-board-delete/pinterest-board-delete.repository';
+import { BatchScheduleService } from '@gitroom/nestjs-libraries/database/prisma/batch-schedule/batch-schedule.service';
+import { BatchScheduleRepository } from '@gitroom/nestjs-libraries/database/prisma/batch-schedule/batch-schedule.repository';
 import { PinterestBoardsService } from '@gitroom/nestjs-libraries/database/prisma/pinterest-boards/pinterest-boards.service';
 
 @Global()
@@ -108,6 +110,8 @@ import { PinterestBoardsService } from '@gitroom/nestjs-libraries/database/prism
     PinterestDeleteRepository,
     PinterestBoardDeleteService,
     PinterestBoardDeleteRepository,
+    BatchScheduleService,
+    BatchScheduleRepository,
     PinterestBoardsService,
   ],
   get exports() {

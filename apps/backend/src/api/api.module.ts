@@ -38,6 +38,7 @@ import { PublishingController } from '@gitroom/backend/api/routes/publishing.con
 import { PinterestDeleteController } from '@gitroom/backend/api/routes/pinterest-delete.controller';
 import { PinterestBoardsController } from '@gitroom/backend/api/routes/pinterest-boards.controller';
 import { PinterestBoardDeleteController } from '@gitroom/backend/api/routes/pinterest-board-delete.controller';
+import { BatchScheduleController } from '@gitroom/backend/api/routes/batch-schedule.controller';
 
 const authenticatedController = [
   UsersController,
@@ -61,6 +62,7 @@ const authenticatedController = [
   PinterestDeleteController,
   PinterestBoardsController,
   PinterestBoardDeleteController,
+  BatchScheduleController,
 ];
 @Module({
   imports: [UploadModule],
