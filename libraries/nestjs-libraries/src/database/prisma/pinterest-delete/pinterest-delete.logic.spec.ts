@@ -1,4 +1,4 @@
-import { parsePinInput, pickBatchIdsToPurge } from './pinterest-delete.logic';
+import { parsePinInput } from './pinterest-delete.logic';
 
 describe('parsePinInput', () => {
   it('accepts a bare numeric pin id', () => {
@@ -25,25 +25,5 @@ describe('parsePinInput', () => {
 
   it('returns null for an empty or whitespace-only string', () => {
     expect(parsePinInput('   ')).toBeNull();
-  });
-});
-
-describe('pickBatchIdsToPurge', () => {
-  it('purges nothing when at or under the retention limit', () => {
-    expect(pickBatchIdsToPurge(['b2', 'b1'], 2)).toEqual([]);
-    expect(pickBatchIdsToPurge(['b1'], 2)).toEqual([]);
-    expect(pickBatchIdsToPurge([], 2)).toEqual([]);
-  });
-
-  it('purges everything beyond the 2 most recent batches', () => {
-    expect(pickBatchIdsToPurge(['b3', 'b2', 'b1'], 2)).toEqual(['b1']);
-  });
-
-  it('purges multiple batches when far beyond the limit', () => {
-    expect(pickBatchIdsToPurge(['b5', 'b4', 'b3', 'b2', 'b1'], 2)).toEqual([
-      'b3',
-      'b2',
-      'b1',
-    ]);
   });
 });

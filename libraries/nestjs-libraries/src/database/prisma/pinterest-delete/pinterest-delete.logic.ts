@@ -17,12 +17,3 @@ export function parsePinInput(raw: string): string | null {
 
   return null;
 }
-
-// Given an integration's batch ids ordered newest-first, returns the ids
-// beyond the retention limit that should be purged.
-export function pickBatchIdsToPurge(
-  batchIdsNewestFirst: string[],
-  keep = 2
-): string[] {
-  return batchIdsNewestFirst.slice(keep);
-}

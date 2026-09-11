@@ -1,17 +1,40 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaRepository } from '@gitroom/nestjs-libraries/database/prisma/prisma.service';
+import {
+  PrismaRepository,
+  PrismaTransaction,
+} from '@gitroom/nestjs-libraries/database/prisma/prisma.service';
+import { computeChainedSlots } from '@gitroom/nestjs-libraries/database/prisma/pinterest-delete/pinterest-delete-scheduling.logic';
 
-const DAILY_CAP = 100;
-const WINDOW_MS = 24 * 60 * 60 * 1000;
+const PIN_DELETE_MIN_MINUTES = 50;
+const PIN_DELETE_MAX_MINUTES = 60;
+
+export interface PinterestDeleteQueueSummary {
+  queued: number;
+  done: number;
+  failed: {
+    id: string;
+    pinId: string;
+    rawInput: string;
+    errorMessage: string | null;
+    processedAt: Date | null;
+  }[];
+  totalEverSubmitted: number;
+  nextRunAt: Date | null;
+  lastCompletionAt: Date | null;
+}
 
 @Injectable()
 export class PinterestDeleteRepository {
   constructor(
     private _batch: PrismaRepository<'pinterestDeleteBatch'>,
     private _item: PrismaRepository<'pinterestDeleteItem'>,
-    private _integration: PrismaRepository<'integration'>
+    private _transaction: PrismaTransaction
   ) {}
 
+  // Computes each new item's slot by chaining off the integration's
+  // pinDeleteNextSlot pointer, then creates the batch + items and advances
+  // the pointer, all inside one transaction — so two submissions for the
+  // same account never compute off the same stale pointer.
   createBatchWithItems(
     organizationId: string,
     integrationId: string,
@@ -19,43 +42,45 @@ export class PinterestDeleteRepository {
     source: 'MANUAL' | 'API' | 'MCP',
     parsedPins: { pinId: string; rawInput: string }[]
   ) {
-    return this._batch.model.pinterestDeleteBatch.create({
-      data: {
-        organizationId,
-        integrationId,
-        createdByUserId,
-        source,
-        submittedCount: parsedPins.length,
-        items: {
-          create: parsedPins.map(({ pinId, rawInput }) => ({
-            integrationId,
-            pinId,
-            rawInput,
-            status: 'PENDING',
-          })),
+    return this._transaction.model.$transaction(async (tx) => {
+      const integration = await tx.integration.findUniqueOrThrow({
+        where: { id: integrationId },
+        select: { pinDeleteNextSlot: true },
+      });
+
+      const slots = computeChainedSlots(
+        integration.pinDeleteNextSlot,
+        parsedPins.length,
+        PIN_DELETE_MIN_MINUTES,
+        PIN_DELETE_MAX_MINUTES
+      );
+
+      const batch = await tx.pinterestDeleteBatch.create({
+        data: {
+          organizationId,
+          integrationId,
+          createdByUserId,
+          source,
+          submittedCount: parsedPins.length,
+          items: {
+            create: parsedPins.map(({ pinId, rawInput }, i) => ({
+              integrationId,
+              pinId,
+              rawInput,
+              status: 'PENDING',
+              scheduledFor: slots[i],
+            })),
+          },
         },
-      },
-      include: { items: true },
-    });
-  }
+        include: { items: true },
+      });
 
-  async listBatchIdsForIntegrationNewestFirst(
-    integrationId: string
-  ): Promise<string[]> {
-    const rows = await this._batch.model.pinterestDeleteBatch.findMany({
-      where: { integrationId },
-      orderBy: { createdAt: 'desc' },
-      select: { id: true },
-    });
-    return rows.map((r) => r.id);
-  }
+      await tx.integration.update({
+        where: { id: integrationId },
+        data: { pinDeleteNextSlot: slots[slots.length - 1] },
+      });
 
-  deleteBatchesByIds(batchIds: string[]) {
-    if (batchIds.length === 0) {
-      return Promise.resolve();
-    }
-    return this._batch.model.pinterestDeleteBatch.deleteMany({
-      where: { id: { in: batchIds } },
+      return batch;
     });
   }
 
@@ -80,103 +105,66 @@ export class PinterestDeleteRepository {
     });
   }
 
-  markItemWaitingForQuota(itemId: string, scheduledFor: Date) {
-    return this._item.model.pinterestDeleteItem.update({
-      where: { id: itemId },
-      data: { status: 'WAITING_FOR_QUOTA', scheduledFor },
-    });
-  }
-
-  markItemPending(itemId: string) {
-    return this._item.model.pinterestDeleteItem.update({
-      where: { id: itemId },
-      data: { status: 'PENDING', scheduledFor: null },
-    });
-  }
-
-  findDueWaitingItems(now: Date) {
+  findOverdueItems(staleBefore: Date) {
     return this._item.model.pinterestDeleteItem.findMany({
-      where: { status: 'WAITING_FOR_QUOTA', scheduledFor: { lte: now } },
+      where: { status: 'PENDING', scheduledFor: { lt: staleBefore } },
     });
   }
 
-  findStalledIntegrationItems(staleBefore: Date) {
-    return this._item.model.pinterestDeleteItem.findMany({
-      where: {
-        status: { in: ['PENDING', 'QUEUED'] },
-        updatedAt: { lt: staleBefore },
-      },
-    });
-  }
-
-  listBatchSummariesForIntegration(integrationId: string) {
-    return this._batch.model.pinterestDeleteBatch.findMany({
-      where: { integrationId },
-      orderBy: { createdAt: 'desc' },
-      include: { items: true },
-    });
-  }
-
-  // Atomically reserves one deletion slot for this integration's rolling
-  // 24h window, or reports when the caller should retry. Implemented as two
-  // single-statement conditional UPDATEs (not a read-then-write) so it stays
-  // correct under concurrent job handlers for the same integration — a bare
-  // SELECT-then-UPDATE would race under BullMQ's worker concurrency.
-  async reserveQuotaSlot(
+  async getQueueSummary(
     integrationId: string
-  ): Promise<{ allowed: boolean; scheduledFor?: Date }> {
-    const now = new Date();
-    const windowCutoff = new Date(now.getTime() - WINDOW_MS);
-
-    const underCap = await this._integration.model.integration.updateMany({
-      where: {
-        id: integrationId,
-        pinDeleteWindowCount: { lt: DAILY_CAP },
-        pinDeleteLastAt: { gte: windowCutoff },
+  ): Promise<PinterestDeleteQueueSummary> {
+    const items = await this._item.model.pinterestDeleteItem.findMany({
+      where: { integrationId },
+      select: {
+        id: true,
+        pinId: true,
+        rawInput: true,
+        status: true,
+        scheduledFor: true,
+        errorMessage: true,
+        processedAt: true,
       },
-      data: { pinDeleteWindowCount: { increment: 1 }, pinDeleteLastAt: now },
     });
 
-    if (underCap.count > 0) {
-      return { allowed: true };
-    }
-
-    const windowExpired =
-      await this._integration.model.integration.updateMany({
-        where: {
-          id: integrationId,
-          OR: [
-            { pinDeleteLastAt: null },
-            { pinDeleteLastAt: { lt: windowCutoff } },
-          ],
-        },
-        data: { pinDeleteWindowCount: 1, pinDeleteLastAt: now },
-      });
-
-    if (windowExpired.count > 0) {
-      return { allowed: true };
-    }
-
-    const integration =
-      await this._integration.model.integration.findUniqueOrThrow({
-        where: { id: integrationId },
-        select: { pinDeleteLastAt: true },
-      });
+    const pending = items.filter((i) => i.status === 'PENDING');
+    const pendingSorted = [...pending].sort(
+      (a, b) =>
+        (a.scheduledFor?.getTime() ?? 0) - (b.scheduledFor?.getTime() ?? 0)
+    );
 
     return {
-      allowed: false,
-      scheduledFor: new Date(
-        integration.pinDeleteLastAt!.getTime() + WINDOW_MS
-      ),
+      queued: pending.length,
+      done: items.filter((i) => i.status === 'REMOVED').length,
+      failed: items
+        .filter((i) => i.status === 'FAILED')
+        .map(({ id, pinId, rawInput, errorMessage, processedAt }) => ({
+          id,
+          pinId,
+          rawInput,
+          errorMessage,
+          processedAt,
+        })),
+      totalEverSubmitted: items.length,
+      nextRunAt: pendingSorted[0]?.scheduledFor ?? null,
+      lastCompletionAt:
+        pendingSorted[pendingSorted.length - 1]?.scheduledFor ?? null,
     };
   }
 
-  // Reverses a reservation made by reserveQuotaSlot when the delete call
-  // itself failed (a failure must not permanently cost a daily-cap slot).
-  releaseQuotaSlot(integrationId: string) {
-    return this._integration.model.integration.update({
-      where: { id: integrationId },
-      data: { pinDeleteWindowCount: { decrement: 1 } },
+  // Deletes REMOVED/FAILED items older than `cutoff`, then deletes any
+  // batch left with zero remaining items (batches have no display value
+  // once empty). PENDING items are never touched regardless of age.
+  async purgeCompletedItemsOlderThan(cutoff: Date): Promise<number> {
+    const result = await this._item.model.pinterestDeleteItem.deleteMany({
+      where: {
+        status: { in: ['REMOVED', 'FAILED'] },
+        processedAt: { lt: cutoff },
+      },
     });
+    await this._batch.model.pinterestDeleteBatch.deleteMany({
+      where: { items: { none: {} } },
+    });
+    return result.count;
   }
 }
