@@ -168,23 +168,23 @@ export class PinterestProvider
     const archivedParam = data?.includeArchived ? '&include_archived=true' : '';
 
     try {
-      // Fetch all boards with pagination
+      // Uses this.fetch (not raw fetch()) so board listing shares the same
+      // rate-limited, auto-retrying queue as every other Pinterest call this
+      // app makes (posting, pin/board deletion) instead of racing against
+      // Pinterest's real API limits — an account with many boards needs
+      // several pages here, and an un-throttled raw fetch loop could get
+      // 429'd mid-pagination and silently truncate the result.
       while (hasMore && pageCount < maxPages) {
         const url = bookmark
           ? `https://api.pinterest.com/v5/boards?page_size=250&bookmark=${bookmark}${archivedParam}`
           : `https://api.pinterest.com/v5/boards?page_size=250${archivedParam}`;
 
-        const fetchResponse = await fetch(url, {
+        const fetchResponse = await this.fetch(url, {
           method: 'GET',
           headers: {
             Authorization: `Bearer ${accessToken}`,
           },
         });
-
-        if (!fetchResponse.ok) {
-          console.error('Pinterest boards API error:', fetchResponse.status);
-          break;
-        }
 
         const response = await fetchResponse.json();
 
