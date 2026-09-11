@@ -37,6 +37,7 @@ import { MonitorController } from '@gitroom/backend/api/routes/monitor.controlle
 import { PublishingController } from '@gitroom/backend/api/routes/publishing.controller';
 import { PinterestDeleteController } from '@gitroom/backend/api/routes/pinterest-delete.controller';
 import { PinterestBoardsController } from '@gitroom/backend/api/routes/pinterest-boards.controller';
+import { PinterestBoardDeleteController } from '@gitroom/backend/api/routes/pinterest-board-delete.controller';
 
 const authenticatedController = [
   UsersController,
@@ -59,6 +60,7 @@ const authenticatedController = [
   PublishingController,
   PinterestDeleteController,
   PinterestBoardsController,
+  PinterestBoardDeleteController,
 ];
 @Module({
   imports: [UploadModule],
