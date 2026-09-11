@@ -15,6 +15,7 @@ import dayjs from 'dayjs';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
 import * as Sentry from '@sentry/nextjs';
+import { BadBody } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 
 @Rules(
   'Pinterest requires at least one media, if posting a video, you must have two attachment, one for video, one for the cover picture, When posting a video, there can be only one'
@@ -158,19 +159,20 @@ export class PinterestProvider
   }
 
   @Tool({ description: 'List of boards', dataSchema: [] })
-  async boards(accessToken: string) {
+  async boards(accessToken: string, data?: { includeArchived?: boolean }) {
     let allBoards: any[] = [];
     let bookmark: string | undefined = undefined;
     let hasMore = true;
     let pageCount = 0;
     const maxPages = 20; // Safety limit to prevent infinite loops
+    const archivedParam = data?.includeArchived ? '&include_archived=true' : '';
 
     try {
       // Fetch all boards with pagination
       while (hasMore && pageCount < maxPages) {
         const url = bookmark
-          ? `https://api.pinterest.com/v5/boards?page_size=250&bookmark=${bookmark}`
-          : 'https://api.pinterest.com/v5/boards?page_size=250';
+          ? `https://api.pinterest.com/v5/boards?page_size=250&bookmark=${bookmark}${archivedParam}`
+          : `https://api.pinterest.com/v5/boards?page_size=250${archivedParam}`;
 
         const fetchResponse = await fetch(url, {
           method: 'GET',
@@ -419,12 +421,29 @@ export class PinterestProvider
       };
       
       console.error('[Pinterest API Error]', JSON.stringify(errorDetails, null, 2));
-      
+
       Sentry.captureException(new Error(`Pinterest API error: ${errorDetails.error_message}`), {
         extra: errorDetails,
       });
-      
-      throw new Error(`Pinterest API error (${response.status}): ${errorDetails.error_message} - Full response: ${JSON.stringify(responseData)}`);
+
+      const lowerCaseMessage = String(errorDetails.error_message).toLowerCase();
+      const isMissingBoard =
+        lowerCaseMessage.includes('board') &&
+        (response.status === 404 ||
+          lowerCaseMessage.includes('not found') ||
+          lowerCaseMessage.includes('does not exist') ||
+          lowerCaseMessage.includes('invalid board'));
+
+      const friendlyMessage = isMissingBoard
+        ? 'The selected Pinterest board is no longer available (it may have been deleted or archived). Please choose a different board and post again.'
+        : `Pinterest API error (${response.status}): ${errorDetails.error_message}`;
+
+      throw new BadBody(
+        'pinterest',
+        JSON.stringify(responseData),
+        JSON.stringify(errorDetails.requestData) as any,
+        friendlyMessage
+      );
     }
 
     const { id: pId } = responseData;
@@ -446,6 +465,24 @@ export class PinterestProvider
   ): Promise<{ success: boolean }> {
     const response = await this.fetch(
       `https://api.pinterest.com/v5/pins/${pinId}`,
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    );
+
+    return { success: response.status === 204 || response.status === 200 };
+  }
+
+  async deleteBoard(
+    id: string,
+    accessToken: string,
+    boardId: string
+  ): Promise<{ success: boolean }> {
+    const response = await this.fetch(
+      `https://api.pinterest.com/v5/boards/${boardId}`,
       {
         method: 'DELETE',
         headers: {

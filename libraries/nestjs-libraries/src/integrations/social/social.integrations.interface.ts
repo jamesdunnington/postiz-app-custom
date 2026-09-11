@@ -94,6 +94,11 @@ export interface ISocialMediaIntegration {
     accessToken: string,
     board: { name: string; description?: string; isPrivate?: boolean }
   ): Promise<{ id: string }>;
+  deleteBoard?(
+    id: string,
+    accessToken: string,
+    boardId: string
+  ): Promise<{ success: boolean }>;
 }
 
 export type PostResponse = {
