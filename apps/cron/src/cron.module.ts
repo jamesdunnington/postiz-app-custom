@@ -12,6 +12,7 @@ import { CheckInvalidTimeSlots } from '@gitroom/cron/tasks/check.invalid.timeslo
 import { SyncBullMqJobs } from '@gitroom/cron/tasks/sync.bullmq.jobs';
 import { CleanupOrphanedMediaStartup } from '@gitroom/cron/tasks/cleanup.orphaned.media.startup';
 import { CheckPinterestDeleteStalled } from '@gitroom/cron/tasks/check.pinterest.delete.stalled';
+import { PurgePinterestDeleteHistory } from '@gitroom/cron/tasks/purge.pinterest.delete.history';
 
 @Module({
   imports: [
@@ -21,6 +22,6 @@ import { CheckPinterestDeleteStalled } from '@gitroom/cron/tasks/check.pinterest
     BullMqModule,
   ],
   controllers: [],
-  providers: [FILTER, CheckMissingQueues, PostNowPendingQueues, RescheduleMissedPostsStartup, CheckDuplicateSchedules, CheckInvalidTimeSlots, SyncBullMqJobs, CleanupOrphanedMediaStartup, CheckPinterestDeleteStalled],
+  providers: [FILTER, CheckMissingQueues, PostNowPendingQueues, RescheduleMissedPostsStartup, CheckDuplicateSchedules, CheckInvalidTimeSlots, SyncBullMqJobs, CleanupOrphanedMediaStartup, CheckPinterestDeleteStalled, PurgePinterestDeleteHistory],
 })
 export class CronModule {}
