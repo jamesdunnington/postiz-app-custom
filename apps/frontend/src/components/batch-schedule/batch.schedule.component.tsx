@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
-import Papa from 'papaparse';
 import { orderBy } from 'lodash';
 import clsx from 'clsx';
 import Image from 'next/image';
@@ -63,6 +62,82 @@ interface BatchScheduleQueueSummary {
 }
 
 const MAX_ROWS_PER_SUBMISSION = 500;
+
+// Minimal RFC4180-style CSV parser (no external dependency): handles
+// quoted fields, commas/newlines inside quotes, and "" as an escaped
+// quote. Sufficient for the fixed export format this tab expects.
+function parseCsvText(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let inQuotes = false;
+  let i = 0;
+
+  while (i < text.length) {
+    const char = text[i];
+
+    if (inQuotes) {
+      if (char === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i += 2;
+          continue;
+        }
+        inQuotes = false;
+        i++;
+        continue;
+      }
+      field += char;
+      i++;
+      continue;
+    }
+
+    if (char === '"') {
+      inQuotes = true;
+      i++;
+      continue;
+    }
+    if (char === ',') {
+      row.push(field);
+      field = '';
+      i++;
+      continue;
+    }
+    if (char === '\r') {
+      i++;
+      continue;
+    }
+    if (char === '\n') {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = '';
+      i++;
+      continue;
+    }
+    field += char;
+    i++;
+  }
+
+  if (field.length > 0 || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+
+  return rows.filter((r) => !(r.length === 1 && r[0].trim() === ''));
+}
+
+function csvRowsToObjects(rows: string[][]): CsvRow[] {
+  if (rows.length === 0) return [];
+  const headers = rows[0].map((h) => h.trim());
+  return rows.slice(1).map((cols) => {
+    const obj: Record<string, string> = {};
+    headers.forEach((header, index) => {
+      obj[header] = cols[index] ?? '';
+    });
+    return obj as unknown as CsvRow;
+  });
+}
 
 function parseRow(row: CsvRow): ParsedRow {
   const content = (row.content || '').trim();
@@ -134,18 +209,15 @@ export const BatchScheduleComponent = () => {
   );
 
   const onFileSelected = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
 
-      Papa.parse<CsvRow>(file, {
-        header: true,
-        skipEmptyLines: true,
-        complete: (results) => {
-          const rows = results.data.map(parseRow).slice(0, MAX_ROWS_PER_SUBMISSION);
-          setParsedRows(rows);
-        },
-      });
+      const text = await file.text();
+      const rows = csvRowsToObjects(parseCsvText(text))
+        .map(parseRow)
+        .slice(0, MAX_ROWS_PER_SUBMISSION);
+      setParsedRows(rows);
 
       e.target.value = '';
     },
