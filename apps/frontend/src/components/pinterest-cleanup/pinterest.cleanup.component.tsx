@@ -24,38 +24,28 @@ interface IntegrationListItem {
   inBetweenSteps?: boolean;
 }
 
-interface PinterestDeleteItemSummary {
+interface PinterestDeleteFailedItem {
   id: string;
-  status: 'PENDING' | 'QUEUED' | 'REMOVED' | 'FAILED' | 'WAITING_FOR_QUOTA';
-  scheduledFor: string | null;
+  pinId: string;
+  rawInput: string;
+  errorMessage: string | null;
+  processedAt: string | null;
 }
 
-interface PinterestDeleteBatchSummary {
-  id: string;
-  createdAt: string;
-  submittedCount: number;
-  source: string;
-  items: PinterestDeleteItemSummary[];
+interface PinterestDeleteQueueSummary {
+  queued: number;
+  done: number;
+  failed: PinterestDeleteFailedItem[];
+  totalEverSubmitted: number;
+  nextRunAt: string | null;
+  lastCompletionAt: string | null;
 }
 
 // Hard ceiling enforced by the backend too (see MAX_PINS_PER_BATCH in
-// pinterest-delete.service.ts) — two rolling 24h windows' worth of pins.
+// pinterest-delete.service.ts) — a sane cap on one form submission. Multiple
+// submissions append to the same ongoing per-account queue.
 const ABSOLUTE_MAX_PINS = 200;
 const DEFAULT_MAX_PINS = 100;
-// Actual per-account deletions allowed per rolling 24h window (DAILY_CAP in
-// pinterest-delete.repository.ts). Not a calendar-day reset — deletions from
-// any earlier batch (or MCP/API call) in the last 24h count against it too.
-const DAILY_RATE_LIMIT = 100;
-
-function summarize(items: PinterestDeleteItemSummary[]) {
-  return {
-    removed: items.filter((i) => i.status === 'REMOVED').length,
-    failed: items.filter((i) => i.status === 'FAILED').length,
-    waiting: items.filter((i) => i.status === 'WAITING_FOR_QUOTA').length,
-    pending: items.filter((i) => i.status === 'PENDING' || i.status === 'QUEUED')
-      .length,
-  };
-}
 
 export const PinterestCleanupComponent = () => {
   const fetch = useFetch();
@@ -100,17 +90,15 @@ export const PinterestCleanupComponent = () => {
     }
   }, [pinterestIntegrations, selectedIntegrationId]);
 
-  const { data: batchesData, mutate: mutateBatches } = useSWR<
-    PinterestDeleteBatchSummary[]
+  const { data: queueData, mutate: mutateQueue } = useSWR<
+    PinterestDeleteQueueSummary
   >(
     selectedIntegrationId
-      ? `pinterest-delete-batches-${selectedIntegrationId}`
+      ? `pinterest-delete-queue-${selectedIntegrationId}`
       : null,
     async () =>
       (
-        await fetch(
-          `/pinterest-delete/batches?integrationId=${selectedIntegrationId}`
-        )
+        await fetch(`/pinterest-delete/queue?integrationId=${selectedIntegrationId}`)
       ).json(),
     { refreshInterval: 7000 }
   );
@@ -159,18 +147,11 @@ export const PinterestCleanupComponent = () => {
 
       setPinsText('');
       toaster.show('Batch submitted', 'success');
-      mutateBatches();
+      mutateQueue();
     } finally {
       setSubmitting(false);
     }
-  }, [pinsText, selectedIntegrationId, maxPins, fetch, toaster, mutateBatches]);
-
-  const batches = batchesData || [];
-  const nextQuotaResume = batches
-    .flatMap((b) => b.items)
-    .filter((i) => i.status === 'WAITING_FOR_QUOTA' && i.scheduledFor)
-    .map((i) => i.scheduledFor as string)
-    .sort()[0];
+  }, [pinsText, selectedIntegrationId, maxPins, fetch, toaster, mutateQueue]);
 
   return (
     <>
@@ -316,16 +297,6 @@ export const PinterestCleanupComponent = () => {
               onChange={(e) => setPinsText(e.target.value)}
             />
 
-            {maxPins > DAILY_RATE_LIMIT && (
-              <div className="text-[12px] text-customColor18">
-                Batches over {DAILY_RATE_LIMIT} pins will span more than one
-                day: only {DAILY_RATE_LIMIT} deletions run per rolling 24-hour
-                window per Pinterest account. The rest are queued
-                automatically and processed once the window rolls forward —
-                this keeps deletions from looking spammy to Pinterest.
-              </div>
-            )}
-
             <div className="flex items-center gap-3">
               <div>
                 {pinCount}/{maxPins} pins
@@ -344,42 +315,50 @@ export const PinterestCleanupComponent = () => {
               </Button>
             </div>
 
-            {nextQuotaResume && (
-              <div className="bg-orange-950/40 border border-orange-800 text-orange-200 rounded p-3">
-                Daily deletion limit reached for this account — resumes at{' '}
-                {new Date(nextQuotaResume).toLocaleString()}.
-                <div className="text-[12px] mt-1 opacity-80">
-                  This is a rolling 24-hour window, not a fixed daily reset —
-                  it counts every deletion for this account in the last 24
-                  hours, including from earlier batches.
+            <div className="flex flex-col gap-2">
+              <div className="text-lg font-semibold">Queue status</div>
+              <div className="border border-newTableBorder bg-sixth rounded p-3 flex flex-col gap-1">
+                <div>
+                  Queued: {queueData?.queued ?? 0} · Done: {queueData?.done ?? 0} ·
+                  Failed: {queueData?.failed.length ?? 0} · Total submitted:{' '}
+                  {queueData?.totalEverSubmitted ?? 0}
+                </div>
+                <div className="text-[12px] text-customColor18">
+                  Next deletion at:{' '}
+                  {queueData?.nextRunAt
+                    ? new Date(queueData.nextRunAt).toLocaleString()
+                    : '—'}{' '}
+                  · Last one completes:{' '}
+                  {queueData?.lastCompletionAt
+                    ? new Date(queueData.lastCompletionAt).toLocaleString()
+                    : '—'}
+                </div>
+                <div className="text-[12px] text-customColor18">
+                  Pins are deleted one at a time, every 50-60 minutes
+                  (randomized) — this keeps deletions from looking spammy to
+                  Pinterest. Submitting more pins adds them to this same
+                  ongoing queue.
                 </div>
               </div>
-            )}
 
-            <div className="flex flex-col gap-2">
-              <div className="text-lg font-semibold">History</div>
-              {batches.length === 0 && (
-                <div>No batches submitted yet for this account.</div>
+              {queueData && queueData.failed.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <div className="text-lg font-semibold">Failed pins</div>
+                  {queueData.failed.map((item) => (
+                    <div
+                      key={item.id}
+                      className="border border-newTableBorder bg-sixth rounded p-3"
+                    >
+                      <div className="truncate" title={item.rawInput}>
+                        {item.rawInput}
+                      </div>
+                      <div className="text-red-400 text-[12px]">
+                        {item.errorMessage}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
-              {batches.map((batch) => {
-                const counts = summarize(batch.items);
-                return (
-                  <div
-                    key={batch.id}
-                    className="border border-newTableBorder bg-sixth rounded p-3"
-                  >
-                    <div>
-                      {new Date(batch.createdAt).toLocaleString()} —{' '}
-                      {batch.submittedCount} submitted ({batch.source})
-                    </div>
-                    <div>
-                      Removed: {counts.removed} · Failed: {counts.failed} ·
-                      Waiting on daily limit: {counts.waiting} · Pending:{' '}
-                      {counts.pending}
-                    </div>
-                  </div>
-                );
-              })}
             </div>
           </>
         )}
