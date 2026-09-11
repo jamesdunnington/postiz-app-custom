@@ -3,18 +3,15 @@ import dayjs from 'dayjs';
 import * as Sentry from '@sentry/nestjs';
 import { Integration } from '@prisma/client';
 import { PinterestDeleteRepository } from '@gitroom/nestjs-libraries/database/prisma/pinterest-delete/pinterest-delete.repository';
-import {
-  parsePinInput,
-  pickBatchIdsToPurge,
-} from '@gitroom/nestjs-libraries/database/prisma/pinterest-delete/pinterest-delete.logic';
+import { parsePinInput } from '@gitroom/nestjs-libraries/database/prisma/pinterest-delete/pinterest-delete.logic';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import { BullMqClient } from '@gitroom/nestjs-libraries/bull-mq-transport-new/client';
 
-const RETENTION_LIMIT = 10;
-// Two rolling 24h windows' worth of pins (see DAILY_CAP in
-// pinterest-delete.repository.ts) — a batch this size spans ~2 days of
-// deletions rather than trying to push everything through at once.
+// Two rolling 24h windows' worth of pins under the old quota model — kept as
+// the per-submission cap under the new timer model too, just as a sane
+// upper bound on a single form submission (the queue itself has no total
+// size limit; you can submit again to append more).
 const MAX_PINS_PER_BATCH = 200;
 
 @Injectable()
@@ -78,16 +75,10 @@ export class PinterestDeleteService {
     for (const item of batch.items) {
       this._workerServiceProducer.emit('pinterest-delete-pin', {
         id: item.id,
+        options: { delay: Math.max(0, item.scheduledFor!.getTime() - Date.now()) },
         payload: { itemId: item.id },
       });
     }
-
-    const allBatchIds =
-      await this._repository.listBatchIdsForIntegrationNewestFirst(
-        integrationId
-      );
-    const toPurge = pickBatchIdsToPurge(allBatchIds, RETENTION_LIMIT);
-    await this._repository.deleteBatchesByIds(toPurge);
 
     return { batchId: batch.id, submittedCount: batch.items.length };
   }
@@ -95,21 +86,7 @@ export class PinterestDeleteService {
   async processItem(itemId: string): Promise<void> {
     const item = await this._repository.getItemById(itemId);
     if (!item) {
-      // Purged by the retention policy (its batch was pushed out by a
-      // later submission) before this job ran. Clean no-op, not an error.
-      return;
-    }
-
-    const reservation = await this._repository.reserveQuotaSlot(
-      item.integrationId
-    );
-    if (!reservation.allowed) {
-      // reservation.scheduledFor is always set when allowed is false —
-      // guaranteed by reserveQuotaSlot's implementation.
-      await this._repository.markItemWaitingForQuota(
-        itemId,
-        reservation.scheduledFor!
-      );
+      // Purged by the retention cron before this job ran. Clean no-op.
       return;
     }
 
@@ -124,7 +101,6 @@ export class PinterestDeleteService {
       );
 
       if (!result?.success) {
-        await this._repository.releaseQuotaSlot(item.integrationId);
         await this._repository.markItemFailed(
           itemId,
           'Pinterest reported the deletion failed'
@@ -134,7 +110,6 @@ export class PinterestDeleteService {
 
       await this._repository.markItemRemoved(itemId);
     } catch (err) {
-      await this._repository.releaseQuotaSlot(item.integrationId);
       await this._repository.markItemFailed(
         itemId,
         err instanceof Error ? err.message : 'Unknown error'
@@ -187,27 +162,13 @@ export class PinterestDeleteService {
     return accessToken;
   }
 
-  async recoverDueQuotaWaits(): Promise<number> {
-    const now = new Date();
-    const dueItems = await this._repository.findDueWaitingItems(now);
-    for (const item of dueItems) {
-      await this._repository.markItemPending(item.id);
-      this._workerServiceProducer.emit('pinterest-delete-pin', {
-        id: item.id,
-        payload: { itemId: item.id },
-      });
-    }
-    return dueItems.length;
-  }
-
   async findStalledItemIntegrationIds(staleMinutes = 15): Promise<string[]> {
     const staleBefore = dayjs().subtract(staleMinutes, 'minute').toDate();
-    const stalled =
-      await this._repository.findStalledIntegrationItems(staleBefore);
+    const stalled = await this._repository.findOverdueItems(staleBefore);
     return Array.from(new Set(stalled.map((i) => i.integrationId)));
   }
 
-  listBatchSummaries(integrationId: string) {
-    return this._repository.listBatchSummariesForIntegration(integrationId);
+  listQueueSummary(integrationId: string) {
+    return this._repository.getQueueSummary(integrationId);
   }
 }
