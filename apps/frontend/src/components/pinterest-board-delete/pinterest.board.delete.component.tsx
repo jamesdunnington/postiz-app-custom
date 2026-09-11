@@ -64,6 +64,30 @@ export const PinterestBoardDeleteComponent = () => {
   const [selectedBoardIds, setSelectedBoardIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
+  // Persists in-progress checkbox selections (per Pinterest account) across
+  // page refreshes — nothing is queued server-side until "Queue for
+  // deletion" is clicked, so without this a refresh silently loses them.
+  const [selectionCookieRaw, setSelectionCookieRaw] = useCookie(
+    'pinterestBoardDeleteSelection',
+    '{}'
+  );
+  const selectionMap: Record<string, string[]> = useMemo(() => {
+    try {
+      return JSON.parse(selectionCookieRaw || '{}');
+    } catch {
+      return {};
+    }
+  }, [selectionCookieRaw]);
+  const persistSelection = useCallback(
+    (integrationId: string, boardIds: string[]) => {
+      if (!integrationId) return;
+      setSelectionCookieRaw(
+        JSON.stringify({ ...selectionMap, [integrationId]: boardIds })
+      );
+    },
+    [selectionMap, setSelectionCookieRaw]
+  );
+
   const { data: integrationsData } = useSWR('integrations', async () =>
     (await fetch('/integrations/list')).json()
   );
@@ -91,8 +115,12 @@ export const PinterestBoardDeleteComponent = () => {
   }, [pinterestIntegrations, selectedIntegrationId]);
 
   useEffect(() => {
-    setSelectedBoardIds([]);
+    setSelectedBoardIds(selectionMap[selectedIntegrationId] || []);
     setSearch('');
+    // Intentionally reacting only to the account switching, not to
+    // selectionMap itself — this effect's job is "load on switch", not
+    // "stay in sync," which would clobber persistSelection's own writes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedIntegrationId]);
 
   const { data: boardsData } = useSWR<PinterestBoardOption[]>(
@@ -143,18 +171,23 @@ export const PinterestBoardDeleteComponent = () => {
     [boardsData, search]
   );
 
-  const toggleBoard = useCallback((boardId: string, on: boolean) => {
-    setSelectedBoardIds((prev) => {
-      if (on) {
-        if (prev.includes(boardId)) return prev;
-        if (prev.length >= MAX_BOARDS_PER_SUBMISSION) {
-          return prev;
+  const toggleBoard = useCallback(
+    (boardId: string, on: boolean) => {
+      setSelectedBoardIds((prev) => {
+        let next = prev;
+        if (on) {
+          if (!prev.includes(boardId) && prev.length < MAX_BOARDS_PER_SUBMISSION) {
+            next = [...prev, boardId];
+          }
+        } else {
+          next = prev.filter((id) => id !== boardId);
         }
-        return [...prev, boardId];
-      }
-      return prev.filter((id) => id !== boardId);
-    });
-  }, []);
+        persistSelection(selectedIntegrationId, next);
+        return next;
+      });
+    },
+    [selectedIntegrationId, persistSelection]
+  );
 
   const onQueueForDeletion = useCallback(async () => {
     if (!selectedIntegrationId || selectedBoardIds.length === 0) {
@@ -181,12 +214,21 @@ export const PinterestBoardDeleteComponent = () => {
       }
 
       setSelectedBoardIds([]);
+      persistSelection(selectedIntegrationId, []);
       toaster.show('Boards queued for deletion', 'success');
       mutateQueue();
     } finally {
       setSubmitting(false);
     }
-  }, [selectedIntegrationId, selectedBoardIds, boardsData, fetch, toaster, mutateQueue]);
+  }, [
+    selectedIntegrationId,
+    selectedBoardIds,
+    boardsData,
+    fetch,
+    toaster,
+    mutateQueue,
+    persistSelection,
+  ]);
 
   return (
     <>
