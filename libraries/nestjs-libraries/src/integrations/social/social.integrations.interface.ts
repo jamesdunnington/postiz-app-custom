@@ -99,6 +99,10 @@ export interface ISocialMediaIntegration {
     accessToken: string,
     boardId: string
   ): Promise<{ success: boolean }>;
+  boards?(
+    accessToken: string,
+    data?: { includeArchived?: boolean }
+  ): Promise<{ name: string; id: string }[]>;
 }
 
 export type PostResponse = {

@@ -183,4 +183,50 @@ export class PinterestBoardDeleteService {
   listQueueSummary(integrationId: string) {
     return this._repository.getQueueSummary(integrationId);
   }
+
+  // Resolves board names to ids by listing the account's boards (including
+  // archived ones) and matching case-insensitively — for callers, like the
+  // MCP tool, that only have a human-readable name to go on rather than an
+  // id looked up through the UI's board picker.
+  async resolveBoardIdsByName(
+    organizationId: string,
+    integrationId: string,
+    boardNames: string[]
+  ): Promise<{
+    matched: { boardId: string; boardName: string }[];
+    notFound: string[];
+  }> {
+    const integration = await this._integrationService.getIntegrationById(
+      organizationId,
+      integrationId
+    );
+    if (
+      !integration ||
+      integration.providerIdentifier !== 'pinterest' ||
+      integration.deletedAt
+    ) {
+      throw new Error(
+        'Integration not found, not a Pinterest account, or no longer connected'
+      );
+    }
+
+    const accessToken = await this.getValidAccessToken(integration);
+    const provider = this._integrationManager.getSocialIntegration('pinterest');
+    const allBoards = (await provider.boards?.(accessToken, { includeArchived: true })) || [];
+
+    const matched: { boardId: string; boardName: string }[] = [];
+    const notFound: string[] = [];
+    for (const requestedName of boardNames) {
+      const match = allBoards.find(
+        (b) => b.name.toLowerCase() === requestedName.toLowerCase()
+      );
+      if (!match) {
+        notFound.push(requestedName);
+        continue;
+      }
+      matched.push({ boardId: match.id, boardName: match.name });
+    }
+
+    return { matched, notFound };
+  }
 }

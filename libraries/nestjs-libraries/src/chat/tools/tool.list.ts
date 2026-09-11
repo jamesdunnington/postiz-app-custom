@@ -14,6 +14,10 @@ import { IntegrationEditPostDateTool } from '@gitroom/nestjs-libraries/chat/tool
 import { IntegrationEditPostContentTool } from '@gitroom/nestjs-libraries/chat/tools/integration.edit.post.content.tool';
 import { IntegrationAnalyticsTool } from '@gitroom/nestjs-libraries/chat/tools/integration.analytics.tool';
 import { PinterestBulkDeletePinsTool } from '@gitroom/nestjs-libraries/chat/tools/pinterest.bulk.delete.pins.tool';
+import { PinterestCreateBoardsTool } from '@gitroom/nestjs-libraries/chat/tools/pinterest.create.boards.tool';
+import { PinterestBulkDeleteBoardsTool } from '@gitroom/nestjs-libraries/chat/tools/pinterest.bulk.delete.boards.tool';
+import { PinterestDeletePinsQueueStatusTool } from '@gitroom/nestjs-libraries/chat/tools/pinterest.delete.pins.queue.status.tool';
+import { PinterestDeleteBoardsQueueStatusTool } from '@gitroom/nestjs-libraries/chat/tools/pinterest.delete.boards.queue.status.tool';
 
 export const toolList = [
   IntegrationListTool,
@@ -32,4 +36,8 @@ export const toolList = [
   IntegrationEditPostContentTool,
   IntegrationAnalyticsTool,
   PinterestBulkDeletePinsTool,
+  PinterestCreateBoardsTool,
+  PinterestBulkDeleteBoardsTool,
+  PinterestDeletePinsQueueStatusTool,
+  PinterestDeleteBoardsQueueStatusTool,
 ];
