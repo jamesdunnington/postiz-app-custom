@@ -168,7 +168,81 @@ export class PinterestDeleteService {
     return Array.from(new Set(stalled.map((i) => i.integrationId)));
   }
 
+  // Self-healing recovery: an item's "trigger" is a BullMQ delayed job, not
+  // the DB row itself, so if that job is ever lost (Redis restarted without
+  // persistence, queue flushed, an app deploy landing mid-flight) the row
+  // would otherwise sit PENDING forever with nothing to wake it up. Any item
+  // still PENDING well past its scheduledFor time gets a fresh, immediate
+  // job re-emitted — the DB row (with its scheduledFor) is the source of
+  // truth, the BullMQ job is just disposable delivery for it.
+  async recoverOverdueItems(staleMinutes = 15): Promise<number> {
+    const staleBefore = dayjs().subtract(staleMinutes, 'minute').toDate();
+    const overdue = await this._repository.findOverdueItems(staleBefore);
+
+    for (const item of overdue) {
+      try {
+        await this._workerServiceProducer.delete('pinterest-delete-pin', item.id);
+      } catch (err) {
+        // No existing job to remove (already consumed or never created) —
+        // that's exactly the case this recovery exists for.
+      }
+      this._workerServiceProducer.emit('pinterest-delete-pin', {
+        id: item.id,
+        options: { delay: 0 },
+        payload: { itemId: item.id },
+      });
+    }
+
+    return overdue.length;
+  }
+
   listQueueSummary(integrationId: string) {
     return this._repository.getQueueSummary(integrationId);
+  }
+
+  // One-time (idempotent) cutover migration: folds any item still carrying
+  // a pre-cutover status ("QUEUED"/"WAITING_FOR_QUOTA" from the old quota
+  // model) into the new chain, in original submission order, and re-emits
+  // its BullMQ job. Safe to call on every boot — once no legacy rows
+  // remain, it's a no-op.
+  async migrateLegacyItems(): Promise<number> {
+    const legacyItems = await this._repository.findLegacyStatusItems();
+    if (legacyItems.length === 0) {
+      return 0;
+    }
+
+    const byIntegration = new Map<string, typeof legacyItems>();
+    for (const item of legacyItems) {
+      const list = byIntegration.get(item.integrationId) || [];
+      list.push(item);
+      byIntegration.set(item.integrationId, list);
+    }
+
+    let migrated = 0;
+    for (const [integrationId, items] of byIntegration) {
+      const itemIdsOldestFirst = items
+        .slice()
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+        .map((i) => i.id);
+
+      const updated = await this._repository.rescheduleItems(
+        integrationId,
+        itemIdsOldestFirst
+      );
+
+      for (const item of updated) {
+        this._workerServiceProducer.emit('pinterest-delete-pin', {
+          id: item.id,
+          options: {
+            delay: Math.max(0, item.scheduledFor!.getTime() - Date.now()),
+          },
+          payload: { itemId: item.id },
+        });
+      }
+
+      migrated += updated.length;
+    }
+
+    return migrated;
   }
 }

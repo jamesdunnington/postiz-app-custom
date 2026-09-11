@@ -156,6 +156,30 @@ export class PinterestBoardDeleteService {
     return Array.from(new Set(stalled.map((i) => i.integrationId)));
   }
 
+  // Mirrors PinterestDeleteService.recoverOverdueItems — see that comment
+  // for why this exists: the DB row's scheduledFor is the source of truth,
+  // the BullMQ job is disposable delivery that can be lost across a Redis
+  // restart or an app deploy landing mid-flight.
+  async recoverOverdueItems(staleMinutes = 15): Promise<number> {
+    const staleBefore = dayjs().subtract(staleMinutes, 'minute').toDate();
+    const overdue = await this._repository.findOverdueItems(staleBefore);
+
+    for (const item of overdue) {
+      try {
+        await this._workerServiceProducer.delete('pinterest-delete-board', item.id);
+      } catch (err) {
+        // No existing job to remove — that's the case this exists for.
+      }
+      this._workerServiceProducer.emit('pinterest-delete-board', {
+        id: item.id,
+        options: { delay: 0 },
+        payload: { itemId: item.id },
+      });
+    }
+
+    return overdue.length;
+  }
+
   listQueueSummary(integrationId: string) {
     return this._repository.getQueueSummary(integrationId);
   }

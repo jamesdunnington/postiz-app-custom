@@ -105,6 +105,52 @@ export class PinterestDeleteRepository {
     });
   }
 
+  // Rows still carrying a pre-cutover status value ("QUEUED" or
+  // "WAITING_FOR_QUOTA" from the old quota model, since retired) — never
+  // matched by any query in the new model, so they'd otherwise sit
+  // forgotten in the table forever after this deploy.
+  findLegacyStatusItems() {
+    return this._item.model.pinterestDeleteItem.findMany({
+      where: { status: { notIn: ['PENDING', 'REMOVED', 'FAILED'] } },
+    });
+  }
+
+  // Folds pre-cutover items into the new chain as if they were just
+  // submitted (in their original createdAt order), so nothing queued
+  // before this deploy is silently lost.
+  rescheduleItems(integrationId: string, itemIdsOldestFirst: string[]) {
+    return this._transaction.model.$transaction(async (tx) => {
+      const integration = await tx.integration.findUniqueOrThrow({
+        where: { id: integrationId },
+        select: { pinDeleteNextSlot: true },
+      });
+
+      const slots = computeChainedSlots(
+        integration.pinDeleteNextSlot,
+        itemIdsOldestFirst.length,
+        PIN_DELETE_MIN_MINUTES,
+        PIN_DELETE_MAX_MINUTES
+      );
+
+      const updated = [];
+      for (let i = 0; i < itemIdsOldestFirst.length; i++) {
+        updated.push(
+          await tx.pinterestDeleteItem.update({
+            where: { id: itemIdsOldestFirst[i] },
+            data: { status: 'PENDING', scheduledFor: slots[i] },
+          })
+        );
+      }
+
+      await tx.integration.update({
+        where: { id: integrationId },
+        data: { pinDeleteNextSlot: slots[slots.length - 1] },
+      });
+
+      return updated;
+    });
+  }
+
   findOverdueItems(staleBefore: Date) {
     return this._item.model.pinterestDeleteItem.findMany({
       where: { status: 'PENDING', scheduledFor: { lt: staleBefore } },
