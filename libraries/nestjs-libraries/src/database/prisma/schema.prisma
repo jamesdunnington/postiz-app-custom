@@ -44,6 +44,7 @@ model Organization {
   errors            Errors[]
   pinDeleteBatches      PinterestDeleteBatch[]
   boardDeleteBatches    PinterestBoardDeleteBatch[]
+  batchScheduleBatches  BatchScheduleBatch[]
 }
 
 model Tags {
@@ -343,6 +344,8 @@ model Integration {
   pinDeleteItems           PinterestDeleteItem[]
   boardDeleteBatches       PinterestBoardDeleteBatch[]
   boardDeleteItems         PinterestBoardDeleteItem[]
+  batchScheduleBatches     BatchScheduleBatch[]
+  batchScheduleItems       BatchScheduleItem[]
 
   @@unique([organizationId, internalId])
   @@index([rootInternalId])
@@ -810,6 +813,46 @@ model PinterestBoardDeleteItem {
 
   batch       PinterestBoardDeleteBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
   integration Integration               @relation(fields: [integrationId], references: [id])
+
+  @@index([integrationId, status])
+}
+
+model BatchScheduleBatch {
+  id              String   @id @default(uuid())
+  organizationId  String
+  integrationId   String
+  createdByUserId String?
+  source          String // "MANUAL"
+  submittedCount  Int
+  createdAt       DateTime @default(now())
+
+  organization Organization         @relation(fields: [organizationId], references: [id])
+  integration  Integration          @relation(fields: [integrationId], references: [id])
+  items        BatchScheduleItem[]
+
+  @@index([integrationId, createdAt])
+}
+
+model BatchScheduleItem {
+  id                  String    @id @default(uuid())
+  batchId             String
+  integrationId       String
+  content             String
+  title               String?
+  imageUrl            String
+  boardId             String
+  altText             String?
+  link                String?
+  assignedPublishDate DateTime
+  status              String // "PENDING" | "SCHEDULED" | "FAILED"
+  postizPostId        String?
+  errorMessage        String?
+  processedAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  batch       BatchScheduleBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  integration Integration        @relation(fields: [integrationId], references: [id])
 
   @@index([integrationId, status])
 }
