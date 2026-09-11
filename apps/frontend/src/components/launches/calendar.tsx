@@ -831,14 +831,18 @@ const CalendarItem: FC<{
   const tooltipDateTime = newDayjs(publishLocal).format(
     isUSCitizen() ? 'dddd, MMM D, YYYY h:mm A' : 'dddd, D MMM YYYY HH:mm'
   );
+  const tooltipContent =
+    state === 'ERROR' && post.error
+      ? `${tooltipDateTime} — ${post.error}`
+      : tooltipDateTime;
 
   return (
     <div
       // @ts-ignore
       ref={dragRef}
       data-tooltip-id="tooltip"
-      data-tooltip-content={tooltipDateTime}
-      title={tooltipDateTime}
+      data-tooltip-content={tooltipContent}
+      title={tooltipContent}
       className={clsx('w-full flex h-full flex-1 flex-col group', 'relative')}
       style={{
         opacity,
@@ -931,6 +935,15 @@ const CalendarItem: FC<{
           <div className="text-start">
             {state === 'DRAFT' ? t('draft', 'Draft') + ': ' : ''}
           </div>
+          {state === 'ERROR' && post.error && (
+            <div
+              className="text-red-500 text-[11px] text-ellipsis break-words line-clamp-1 text-left"
+              data-tooltip-id="tooltip"
+              data-tooltip-content={post.error}
+            >
+              {post.error}
+            </div>
+          )}
           <div className="w-full relative">
             <div className="absolute top-0 start-0 w-full text-ellipsis break-words line-clamp-1 text-left">
               {stripHtmlValidation('none', post.content, false, true, false) ||

@@ -188,6 +188,7 @@ export class PostsRepository {
         submittedForOrganizationId: true,
         submittedForOrderId: true,
         state: true,
+        error: true,
         intervalInDays: true,
         group: true,
         image: true,
@@ -402,7 +403,14 @@ export class PostsRepository {
       data: {
         state,
         ...(err
-          ? { error: typeof err === 'string' ? err : JSON.stringify(err) }
+          ? {
+              error:
+                typeof err === 'string'
+                  ? err
+                  : typeof err?.message === 'string' && err.message
+                  ? err.message
+                  : JSON.stringify(err),
+            }
           : {}),
       },
       include: {
@@ -418,7 +426,12 @@ export class PostsRepository {
       try {
         await this._errors.model.errors.create({
           data: {
-            message: typeof err === 'string' ? err : JSON.stringify(err),
+            message:
+              typeof err === 'string'
+                ? err
+                : err instanceof Error
+                ? err.message
+                : JSON.stringify(err),
             organizationId: update.organizationId,
             platform: update.integration.providerIdentifier,
             postId: update.id,
