@@ -6,12 +6,13 @@ import { BullMqModule } from '@gitroom/nestjs-libraries/bull-mq-transport-new/bu
 import { PlugsController } from '@gitroom/workers/app/plugs.controller';
 import { PinterestDeleteController } from '@gitroom/workers/app/pinterest-delete.controller';
 import { PinterestBoardDeleteController } from '@gitroom/workers/app/pinterest-board-delete.controller';
+import { BatchScheduleController } from '@gitroom/workers/app/batch-schedule.controller';
 import { SentryModule } from '@sentry/nestjs/setup';
 import { FILTER } from '@gitroom/nestjs-libraries/sentry/sentry.exception';
 
 @Module({
   imports: [SentryModule.forRoot(), DatabaseModule, BullMqModule],
-  controllers: [PostsController, PlugsController, PinterestDeleteController, PinterestBoardDeleteController],
+  controllers: [PostsController, PlugsController, PinterestDeleteController, PinterestBoardDeleteController, BatchScheduleController],
   providers: [FILTER],
 })
 export class AppModule {}
