@@ -13,6 +13,8 @@ import { SyncBullMqJobs } from '@gitroom/cron/tasks/sync.bullmq.jobs';
 import { CleanupOrphanedMediaStartup } from '@gitroom/cron/tasks/cleanup.orphaned.media.startup';
 import { CheckPinterestDeleteStalled } from '@gitroom/cron/tasks/check.pinterest.delete.stalled';
 import { PurgePinterestDeleteHistory } from '@gitroom/cron/tasks/purge.pinterest.delete.history';
+import { CheckBatchScheduleStalled } from '@gitroom/cron/tasks/check.batch.schedule.stalled';
+import { PurgeBatchScheduleHistory } from '@gitroom/cron/tasks/purge.batch.schedule.history';
 import { MigratePinterestDeleteLegacyStartup } from '@gitroom/cron/tasks/migrate.pinterest.delete.legacy.startup';
 
 @Module({
@@ -23,6 +25,6 @@ import { MigratePinterestDeleteLegacyStartup } from '@gitroom/cron/tasks/migrate
     BullMqModule,
   ],
   controllers: [],
-  providers: [FILTER, CheckMissingQueues, PostNowPendingQueues, RescheduleMissedPostsStartup, CheckDuplicateSchedules, CheckInvalidTimeSlots, SyncBullMqJobs, CleanupOrphanedMediaStartup, CheckPinterestDeleteStalled, PurgePinterestDeleteHistory, MigratePinterestDeleteLegacyStartup],
+  providers: [FILTER, CheckMissingQueues, PostNowPendingQueues, RescheduleMissedPostsStartup, CheckDuplicateSchedules, CheckInvalidTimeSlots, SyncBullMqJobs, CleanupOrphanedMediaStartup, CheckPinterestDeleteStalled, PurgePinterestDeleteHistory, MigratePinterestDeleteLegacyStartup, CheckBatchScheduleStalled, PurgeBatchScheduleHistory],
 })
 export class CronModule {}
