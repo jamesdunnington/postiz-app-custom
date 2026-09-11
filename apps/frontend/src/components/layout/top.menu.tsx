@@ -181,6 +181,34 @@ export const useMenuItem = () => {
       path: '/pinterest-board-delete',
     },
     {
+      name: t('pinterest_batch_scheduling', 'Batch Scheduling'),
+      icon: (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="20"
+          height="20"
+          viewBox="0 0 20 20"
+          fill="none"
+        >
+          <rect
+            x="1"
+            y="3"
+            width="18"
+            height="15"
+            rx="2"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          />
+          <path
+            d="M1 7.5H19"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          />
+        </svg>
+      ),
+      path: '/batch-schedule',
+    },
+    {
       name: t('plugs', 'Plugs'),
       icon: (
         <svg
