@@ -42,7 +42,8 @@ model Organization {
   sets              Sets[]
   thirdParty        ThirdParty[]
   errors            Errors[]
-  pinDeleteBatches  PinterestDeleteBatch[]
+  pinDeleteBatches      PinterestDeleteBatch[]
+  boardDeleteBatches    PinterestBoardDeleteBatch[]
 }
 
 model Tags {
@@ -336,10 +337,12 @@ model Integration {
   rootInternalId        String?
   additionalSettings    String?                @default("[]")
   webhooks              IntegrationsWebhooks[]
-  pinDeleteWindowCount  Int                    @default(0)
-  pinDeleteLastAt       DateTime?
-  pinDeleteBatches      PinterestDeleteBatch[]
-  pinDeleteItems        PinterestDeleteItem[]
+  pinDeleteNextSlot        DateTime?
+  boardDeleteNextSlot      DateTime?
+  pinDeleteBatches         PinterestDeleteBatch[]
+  pinDeleteItems           PinterestDeleteItem[]
+  boardDeleteBatches       PinterestBoardDeleteBatch[]
+  boardDeleteItems         PinterestBoardDeleteItem[]
 
   @@unique([organizationId, internalId])
   @@index([rootInternalId])
@@ -762,7 +765,7 @@ model PinterestDeleteItem {
   integrationId String
   pinId         String
   rawInput      String
-  status        String // "PENDING" | "QUEUED" | "REMOVED" | "FAILED" | "WAITING_FOR_QUOTA"
+  status        String // "PENDING" | "REMOVED" | "FAILED"
   scheduledFor  DateTime?
   errorMessage  String?
   processedAt   DateTime?
@@ -774,4 +777,39 @@ model PinterestDeleteItem {
 
   @@index([integrationId, status])
   @@index([status, scheduledFor])
+}
+
+model PinterestBoardDeleteBatch {
+  id              String    @id @default(uuid())
+  organizationId  String
+  integrationId   String
+  createdByUserId String?
+  source          String // "MANUAL"
+  submittedCount  Int
+  createdAt       DateTime  @default(now())
+
+  organization Organization               @relation(fields: [organizationId], references: [id])
+  integration  Integration                @relation(fields: [integrationId], references: [id])
+  items        PinterestBoardDeleteItem[]
+
+  @@index([integrationId, createdAt])
+}
+
+model PinterestBoardDeleteItem {
+  id            String    @id @default(uuid())
+  batchId       String
+  integrationId String
+  boardId       String
+  boardName     String // captured at queue time — unavailable after deletion
+  status        String // "PENDING" | "REMOVED" | "FAILED"
+  scheduledFor  DateTime?
+  errorMessage  String?
+  processedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  batch       PinterestBoardDeleteBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  integration Integration               @relation(fields: [integrationId], references: [id])
+
+  @@index([integrationId, status])
 }
