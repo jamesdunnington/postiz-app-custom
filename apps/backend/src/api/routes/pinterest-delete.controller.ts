@@ -24,8 +24,8 @@ export class PinterestDeleteController {
     );
   }
 
-  @Get('/batches')
-  listBatches(@Query('integrationId') integrationId: string) {
-    return this._pinterestDeleteService.listBatchSummaries(integrationId);
+  @Get('/queue')
+  getQueue(@Query('integrationId') integrationId: string) {
+    return this._pinterestDeleteService.listQueueSummary(integrationId);
   }
 }
