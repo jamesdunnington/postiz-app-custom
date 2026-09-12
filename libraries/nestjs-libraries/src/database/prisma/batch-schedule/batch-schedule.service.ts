@@ -19,6 +19,13 @@ import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 
 const MAX_ROWS_PER_BATCH = 500;
 
+// Items process one at a time (see PATTERN_CONCURRENCY in bull-mq-transport-new/strategy.ts),
+// but 500 fully serial items would still hammer the image-rehost source back
+// to back. Group submission into batches of 20 with a 2s gap between groups
+// so a 120-row CSV lands as 6 groups instead of one 120-item burst.
+const ENQUEUE_BATCH_SIZE = 20;
+const ENQUEUE_BATCH_DELAY_MS = 2000;
+
 @Injectable()
 export class BatchScheduleService {
   private storage = UploadFactory.createStorage();
@@ -92,13 +99,15 @@ export class BatchScheduleService {
       assigned
     );
 
-    for (const item of batch.items) {
+    batch.items.forEach((item, index) => {
+      const delay =
+        Math.floor(index / ENQUEUE_BATCH_SIZE) * ENQUEUE_BATCH_DELAY_MS;
       this._workerServiceProducer.emit('batch-schedule-item', {
         id: item.id,
-        options: { delay: 0 },
+        options: { delay },
         payload: { itemId: item.id },
       });
-    }
+    });
 
     return {
       batchId: batch.id,
