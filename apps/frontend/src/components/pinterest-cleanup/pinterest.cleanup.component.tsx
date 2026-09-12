@@ -32,8 +32,16 @@ interface PinterestDeleteFailedItem {
   processedAt: string | null;
 }
 
+interface PinterestDeleteQueuedItem {
+  id: string;
+  pinId: string;
+  rawInput: string;
+  scheduledFor: string | null;
+}
+
 interface PinterestDeleteQueueSummary {
   queued: number;
+  queuedItems: PinterestDeleteQueuedItem[];
   done: number;
   failed: PinterestDeleteFailedItem[];
   totalEverSubmitted: number;
@@ -55,6 +63,10 @@ export const PinterestCleanupComponent = () => {
   const [pinsText, setPinsText] = useState('');
   const [maxPinsInput, setMaxPinsInput] = useState(String(DEFAULT_MAX_PINS));
   const [submitting, setSubmitting] = useState(false);
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(
+    new Set()
+  );
+  const [cancelling, setCancelling] = useState(false);
 
   const maxPins = useMemo(() => {
     const parsed = parseInt(maxPinsInput, 10);
@@ -101,6 +113,75 @@ export const PinterestCleanupComponent = () => {
         await fetch(`/pinterest-delete/queue?integrationId=${selectedIntegrationId}`)
       ).json(),
     { refreshInterval: 7000 }
+  );
+
+  // Drop any selected id that no longer exists in the queue (cancelled
+  // elsewhere, or already drained) so "Cancel selected" never resubmits a
+  // stale id, and clear the selection entirely when switching accounts.
+  useEffect(() => {
+    setSelectedItemIds(new Set());
+  }, [selectedIntegrationId]);
+
+  useEffect(() => {
+    if (!queueData) return;
+    const stillQueued = new Set(queueData.queuedItems.map((i) => i.id));
+    setSelectedItemIds((prev) => {
+      const next = new Set([...prev].filter((id) => stillQueued.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [queueData]);
+
+  const toggleItemSelected = useCallback((itemId: string) => {
+    setSelectedItemIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) {
+        next.delete(itemId);
+      } else {
+        next.add(itemId);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    setSelectedItemIds((prev) => {
+      const allIds = (queueData?.queuedItems || []).map((i) => i.id);
+      return prev.size === allIds.length ? new Set() : new Set(allIds);
+    });
+  }, [queueData]);
+
+  const onCancelSelected = useCallback(
+    async (itemIds: string[]) => {
+      if (!selectedIntegrationId || itemIds.length === 0) return;
+
+      setCancelling(true);
+      try {
+        const response = await fetch('/pinterest-delete/cancel', {
+          method: 'POST',
+          body: JSON.stringify({
+            integrationId: selectedIntegrationId,
+            itemIds,
+          }),
+        });
+
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}) as any);
+          toaster.show(body.message || 'Failed to cancel', 'warning');
+          return;
+        }
+
+        const result = await response.json();
+        toaster.show(
+          `Cancelled ${result.cancelledIds?.length ?? 0} pin(s)`,
+          'success'
+        );
+        setSelectedItemIds(new Set());
+        mutateQueue();
+      } finally {
+        setCancelling(false);
+      }
+    },
+    [selectedIntegrationId, fetch, toaster, mutateQueue]
   );
 
   const pinCount = useMemo(
@@ -340,6 +421,66 @@ export const PinterestCleanupComponent = () => {
                   ongoing queue.
                 </div>
               </div>
+
+              {queueData && queueData.queuedItems.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-3">
+                    <div className="text-lg font-semibold flex-1">
+                      Queued pins ({queueData.queuedItems.length})
+                    </div>
+                    <label className="flex items-center gap-2 text-[12px] cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={
+                          selectedItemIds.size ===
+                            queueData.queuedItems.length &&
+                          queueData.queuedItems.length > 0
+                        }
+                        onChange={toggleSelectAll}
+                      />
+                      Select all
+                    </label>
+                    <Button
+                      disabled={cancelling || selectedItemIds.size === 0}
+                      loading={cancelling}
+                      onClick={() =>
+                        onCancelSelected(Array.from(selectedItemIds))
+                      }
+                    >
+                      Cancel selected ({selectedItemIds.size})
+                    </Button>
+                  </div>
+                  <div className="flex flex-col gap-1 max-h-[320px] overflow-y-auto">
+                    {queueData.queuedItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center gap-3 border border-newTableBorder bg-sixth rounded p-3"
+                      >
+                        <input
+                          type="checkbox"
+                          className="cursor-pointer"
+                          checked={selectedItemIds.has(item.id)}
+                          onChange={() => toggleItemSelected(item.id)}
+                        />
+                        <div className="flex-1 truncate" title={item.rawInput}>
+                          {item.rawInput}
+                        </div>
+                        <div className="text-[12px] text-customColor18 whitespace-nowrap">
+                          {item.scheduledFor
+                            ? new Date(item.scheduledFor).toLocaleString()
+                            : '—'}
+                        </div>
+                        <Button
+                          disabled={cancelling}
+                          onClick={() => onCancelSelected([item.id])}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {queueData && queueData.failed.length > 0 && (
                 <div className="flex flex-col gap-2">

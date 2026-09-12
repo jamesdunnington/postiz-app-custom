@@ -184,6 +184,37 @@ export class PinterestBoardDeleteService {
     return this._repository.getQueueSummary(integrationId);
   }
 
+  // Mirrors PinterestDeleteService.cancelItems for the board-deletion queue.
+  async cancelItems(
+    organizationId: string,
+    integrationId: string,
+    itemIds: string[]
+  ): Promise<{ cancelledIds: string[] }> {
+    const integration = await this._integrationService.getIntegrationById(
+      organizationId,
+      integrationId
+    );
+    if (!integration || integration.providerIdentifier !== 'pinterest') {
+      throw new Error('Integration not found or not a Pinterest account');
+    }
+
+    const cancelledIds = await this._repository.cancelItems(
+      integrationId,
+      itemIds
+    );
+
+    for (const id of cancelledIds) {
+      try {
+        await this._workerServiceProducer.delete('pinterest-delete-board', id);
+      } catch (err) {
+        // No matching delayed job (already fired, or never created) — the
+        // DB row is already gone either way, so there's nothing left to do.
+      }
+    }
+
+    return { cancelledIds };
+  }
+
   // Resolves board names to ids by listing the account's boards (including
   // archived ones) and matching case-insensitively — for callers, like the
   // MCP tool, that only have a human-readable name to go on rather than an

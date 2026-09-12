@@ -200,6 +200,38 @@ export class PinterestDeleteService {
     return this._repository.getQueueSummary(integrationId);
   }
 
+  // Cancels queued (PENDING) items by id, removing them from the DB and
+  // dropping their BullMQ delayed jobs so nothing fires for them later.
+  async cancelItems(
+    organizationId: string,
+    integrationId: string,
+    itemIds: string[]
+  ): Promise<{ cancelledIds: string[] }> {
+    const integration = await this._integrationService.getIntegrationById(
+      organizationId,
+      integrationId
+    );
+    if (!integration || integration.providerIdentifier !== 'pinterest') {
+      throw new Error('Integration not found or not a Pinterest account');
+    }
+
+    const cancelledIds = await this._repository.cancelItems(
+      integrationId,
+      itemIds
+    );
+
+    for (const id of cancelledIds) {
+      try {
+        await this._workerServiceProducer.delete('pinterest-delete-pin', id);
+      } catch (err) {
+        // No matching delayed job (already fired, or never created) — the
+        // DB row is already gone either way, so there's nothing left to do.
+      }
+    }
+
+    return { cancelledIds };
+  }
+
   // One-time (idempotent) cutover migration: folds any item still carrying
   // a pre-cutover status ("QUEUED"/"WAITING_FOR_QUOTA" from the old quota
   // model) into the new chain, in original submission order, and re-emits

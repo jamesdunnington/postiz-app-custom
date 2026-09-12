@@ -18,6 +18,8 @@ import { PinterestCreateBoardsTool } from '@gitroom/nestjs-libraries/chat/tools/
 import { PinterestBulkDeleteBoardsTool } from '@gitroom/nestjs-libraries/chat/tools/pinterest.bulk.delete.boards.tool';
 import { PinterestDeletePinsQueueStatusTool } from '@gitroom/nestjs-libraries/chat/tools/pinterest.delete.pins.queue.status.tool';
 import { PinterestDeleteBoardsQueueStatusTool } from '@gitroom/nestjs-libraries/chat/tools/pinterest.delete.boards.queue.status.tool';
+import { PinterestCancelQueuedPinsTool } from '@gitroom/nestjs-libraries/chat/tools/pinterest.cancel.queued.pins.tool';
+import { PinterestCancelQueuedBoardsTool } from '@gitroom/nestjs-libraries/chat/tools/pinterest.cancel.queued.boards.tool';
 
 export const toolList = [
   IntegrationListTool,
@@ -40,4 +42,6 @@ export const toolList = [
   PinterestBulkDeleteBoardsTool,
   PinterestDeletePinsQueueStatusTool,
   PinterestDeleteBoardsQueueStatusTool,
+  PinterestCancelQueuedPinsTool,
+  PinterestCancelQueuedBoardsTool,
 ];

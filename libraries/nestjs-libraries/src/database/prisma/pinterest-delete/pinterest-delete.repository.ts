@@ -10,6 +10,12 @@ const PIN_DELETE_MAX_MINUTES = 60;
 
 export interface PinterestDeleteQueueSummary {
   queued: number;
+  queuedItems: {
+    id: string;
+    pinId: string;
+    rawInput: string;
+    scheduledFor: Date | null;
+  }[];
   done: number;
   failed: {
     id: string;
@@ -181,6 +187,12 @@ export class PinterestDeleteRepository {
 
     return {
       queued: pending.length,
+      queuedItems: pendingSorted.map(({ id, pinId, rawInput, scheduledFor }) => ({
+        id,
+        pinId,
+        rawInput,
+        scheduledFor,
+      })),
       done: items.filter((i) => i.status === 'REMOVED').length,
       failed: items
         .filter((i) => i.status === 'FAILED')
@@ -196,6 +208,30 @@ export class PinterestDeleteRepository {
       lastCompletionAt:
         pendingSorted[pendingSorted.length - 1]?.scheduledFor ?? null,
     };
+  }
+
+  // Only PENDING items belonging to this integration are eligible — already
+  // REMOVED/FAILED ids passed in are silently ignored rather than erroring,
+  // since the caller's selection may be stale by the time this runs (e.g.
+  // the queue drained one more pin in the background). Returns the ids that
+  // were actually deleted, so the caller can also drop their BullMQ delayed
+  // jobs (deleting the row makes the queued item disappear from the count
+  // even if that job still exists and fires — the worker already treats a
+  // missing item as a clean no-op).
+  async cancelItems(integrationId: string, itemIds: string[]): Promise<string[]> {
+    if (itemIds.length === 0) return [];
+
+    const matching = await this._item.model.pinterestDeleteItem.findMany({
+      where: { integrationId, id: { in: itemIds }, status: 'PENDING' },
+      select: { id: true },
+    });
+    if (matching.length === 0) return [];
+
+    await this._item.model.pinterestDeleteItem.deleteMany({
+      where: { id: { in: matching.map((i) => i.id) } },
+    });
+
+    return matching.map((i) => i.id);
   }
 
   // Deletes REMOVED/FAILED items older than `cutoff`, then deletes any

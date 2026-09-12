@@ -63,6 +63,10 @@ export const PinterestBoardDeleteComponent = () => {
   const [search, setSearch] = useState('');
   const [selectedBoardIds, setSelectedBoardIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [selectedCancelIds, setSelectedCancelIds] = useState<Set<string>>(
+    new Set()
+  );
+  const [cancelling, setCancelling] = useState(false);
 
   // Persists in-progress checkbox selections (per Pinterest account) across
   // page refreshes — nothing is queued server-side until "Queue for
@@ -161,6 +165,76 @@ export const PinterestBoardDeleteComponent = () => {
           .map((i) => i.boardId)
       ),
     [queueData]
+  );
+
+  const pendingQueueItems = useMemo(
+    () => (queueData?.items || []).filter((i) => i.status === 'PENDING'),
+    [queueData]
+  );
+
+  useEffect(() => {
+    setSelectedCancelIds(new Set());
+  }, [selectedIntegrationId]);
+
+  useEffect(() => {
+    const stillPending = new Set(pendingQueueItems.map((i) => i.id));
+    setSelectedCancelIds((prev) => {
+      const next = new Set([...prev].filter((id) => stillPending.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [pendingQueueItems]);
+
+  const toggleCancelSelected = useCallback((itemId: string) => {
+    setSelectedCancelIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) {
+        next.delete(itemId);
+      } else {
+        next.add(itemId);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleCancelSelectAll = useCallback(() => {
+    setSelectedCancelIds((prev) => {
+      const allIds = pendingQueueItems.map((i) => i.id);
+      return prev.size === allIds.length ? new Set() : new Set(allIds);
+    });
+  }, [pendingQueueItems]);
+
+  const onCancelQueued = useCallback(
+    async (itemIds: string[]) => {
+      if (!selectedIntegrationId || itemIds.length === 0) return;
+
+      setCancelling(true);
+      try {
+        const response = await fetch('/pinterest-board-delete/cancel', {
+          method: 'POST',
+          body: JSON.stringify({
+            integrationId: selectedIntegrationId,
+            itemIds,
+          }),
+        });
+
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}) as any);
+          toaster.show(body.message || 'Failed to cancel', 'warning');
+          return;
+        }
+
+        const result = await response.json();
+        toaster.show(
+          `Cancelled ${result.cancelledIds?.length ?? 0} board(s)`,
+          'success'
+        );
+        setSelectedCancelIds(new Set());
+        mutateQueue();
+      } finally {
+        setCancelling(false);
+      }
+    },
+    [selectedIntegrationId, fetch, toaster, mutateQueue]
   );
 
   const filteredBoards = useMemo(
@@ -441,19 +515,54 @@ export const PinterestBoardDeleteComponent = () => {
               </div>
             </div>
 
+            {pendingQueueItems.length > 0 && (
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 text-[12px] cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={
+                      selectedCancelIds.size === pendingQueueItems.length &&
+                      pendingQueueItems.length > 0
+                    }
+                    onChange={toggleCancelSelectAll}
+                  />
+                  Select all pending
+                </label>
+                <Button
+                  disabled={cancelling || selectedCancelIds.size === 0}
+                  loading={cancelling}
+                  onClick={() => onCancelQueued(Array.from(selectedCancelIds))}
+                >
+                  Cancel selected ({selectedCancelIds.size})
+                </Button>
+              </div>
+            )}
+
             {queueData && queueData.items.length > 0 && (
               <div className="flex flex-col gap-[8px]">
-                <div className="grid grid-cols-[2fr,120px,1fr,2fr] gap-[10px] text-[12px] text-customColor18 px-1">
+                <div className="grid grid-cols-[40px,2fr,120px,1fr,2fr,110px] gap-[10px] text-[12px] text-customColor18 px-1">
+                  <div />
                   <div>Board name</div>
                   <div>Status</div>
                   <div>Scheduled / completed</div>
                   <div>Error</div>
+                  <div>Action</div>
                 </div>
                 {queueData.items.map((item) => (
                   <div
                     key={item.id}
-                    className="grid grid-cols-[2fr,120px,1fr,2fr] gap-[10px] items-center border border-newTableBorder bg-sixth rounded p-2"
+                    className="grid grid-cols-[40px,2fr,120px,1fr,2fr,110px] gap-[10px] items-center border border-newTableBorder bg-sixth rounded p-2"
                   >
+                    <div>
+                      {item.status === 'PENDING' && (
+                        <input
+                          type="checkbox"
+                          className="cursor-pointer"
+                          checked={selectedCancelIds.has(item.id)}
+                          onChange={() => toggleCancelSelected(item.id)}
+                        />
+                      )}
+                    </div>
                     <div className="truncate" title={item.boardName}>
                       {item.boardName}
                     </div>
@@ -477,6 +586,16 @@ export const PinterestBoardDeleteComponent = () => {
                     </div>
                     <div className="text-[12px] text-red-400 truncate" title={item.errorMessage || ''}>
                       {item.errorMessage || ''}
+                    </div>
+                    <div>
+                      {item.status === 'PENDING' && (
+                        <Button
+                          disabled={cancelling}
+                          onClick={() => onCancelQueued([item.id])}
+                        >
+                          Cancel
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ))}

@@ -4,6 +4,7 @@ import { GetOrgFromRequest } from '@gitroom/nestjs-libraries/user/org.from.reque
 import { GetUserFromRequest } from '@gitroom/nestjs-libraries/user/user.from.request';
 import { PinterestDeleteService } from '@gitroom/nestjs-libraries/database/prisma/pinterest-delete/pinterest-delete.service';
 import { PinterestDeleteBatchDto } from '@gitroom/nestjs-libraries/dtos/pinterest-delete/pinterest.delete.batch.dto';
+import { PinterestDeleteCancelDto } from '@gitroom/nestjs-libraries/dtos/pinterest-delete/pinterest.delete.cancel.dto';
 
 @Controller('/pinterest-delete')
 export class PinterestDeleteController {
@@ -27,5 +28,17 @@ export class PinterestDeleteController {
   @Get('/queue')
   getQueue(@Query('integrationId') integrationId: string) {
     return this._pinterestDeleteService.listQueueSummary(integrationId);
+  }
+
+  @Post('/cancel')
+  cancel(
+    @GetOrgFromRequest() org: Organization,
+    @Body() body: PinterestDeleteCancelDto
+  ) {
+    return this._pinterestDeleteService.cancelItems(
+      org.id,
+      body.integrationId,
+      body.itemIds
+    );
   }
 }

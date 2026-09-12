@@ -24,6 +24,14 @@ export class PinterestDeletePinsQueueStatusTool implements AgentToolInterface {
       outputSchema: z.object({
         output: z.object({
           queued: z.number(),
+          queuedItems: z.array(
+            z.object({
+              id: z.string(),
+              pinId: z.string(),
+              rawInput: z.string(),
+              scheduledFor: z.string().nullable(),
+            })
+          ),
           done: z.number(),
           totalEverSubmitted: z.number(),
           nextRunAt: z.string().nullable(),
@@ -48,6 +56,14 @@ export class PinterestDeletePinsQueueStatusTool implements AgentToolInterface {
         return {
           output: {
             queued: summary.queued,
+            queuedItems: summary.queuedItems.map(
+              ({ id, pinId, rawInput, scheduledFor }) => ({
+                id,
+                pinId,
+                rawInput,
+                scheduledFor: scheduledFor ? scheduledFor.toISOString() : null,
+              })
+            ),
             done: summary.done,
             totalEverSubmitted: summary.totalEverSubmitted,
             nextRunAt: summary.nextRunAt ? summary.nextRunAt.toISOString() : null,

@@ -184,6 +184,25 @@ export class PinterestBoardDeleteRepository {
     };
   }
 
+  // Mirrors PinterestDeleteRepository.cancelItems — only PENDING items
+  // belonging to this integration are eligible; already REMOVED/FAILED ids
+  // are silently ignored since the caller's selection may be stale.
+  async cancelItems(integrationId: string, itemIds: string[]): Promise<string[]> {
+    if (itemIds.length === 0) return [];
+
+    const matching = await this._item.model.pinterestBoardDeleteItem.findMany({
+      where: { integrationId, id: { in: itemIds }, status: 'PENDING' },
+      select: { id: true },
+    });
+    if (matching.length === 0) return [];
+
+    await this._item.model.pinterestBoardDeleteItem.deleteMany({
+      where: { id: { in: matching.map((i) => i.id) } },
+    });
+
+    return matching.map((i) => i.id);
+  }
+
   async purgeCompletedItemsOlderThan(cutoff: Date): Promise<number> {
     const result = await this._item.model.pinterestBoardDeleteItem.deleteMany({
       where: {
