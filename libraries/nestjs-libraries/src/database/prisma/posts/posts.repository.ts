@@ -688,18 +688,32 @@ export class PostsRepository {
       let finalPublishDate = dayjs(date).toDate();
 
       if (state === 'schedule' && body.integration?.id) {
-        const existingPost = await this.checkForDuplicateAtTime(
-          body.integration.id,
-          finalPublishDate,
-          value.id // Exclude current post if updating
-        );
-        
-        if (existingPost) {
+        // A post being re-saved (e.g. fixing a missing Pinterest board on an
+        // errored post) keeps whatever publishDate it already had. If that
+        // date is now in the past, leaving it as-is would flip the post back
+        // to QUEUE without ever re-queuing it in the worker (which only
+        // enqueues future dates) and without being caught by the "clean
+        // calendar" invalid-time-slot sweep (which only looks at posts more
+        // than an hour in the future) - the post would silently go nowhere.
+        const isPastDate = dayjs(finalPublishDate).isBefore(dayjs());
+
+        const existingPost = isPastDate
+          ? null
+          : await this.checkForDuplicateAtTime(
+              body.integration.id,
+              finalPublishDate,
+              value.id // Exclude current post if updating
+            );
+
+        if (existingPost || isPastDate) {
           console.log(
-            `[createOrUpdatePost] Duplicate detected at ${dayjs(finalPublishDate).format('YYYY-MM-DD HH:mm')} ` +
-            `for integration ${body.integration.id}. Auto-rescheduling to end of schedule.`
+            isPastDate
+              ? `[createOrUpdatePost] Publish date ${dayjs(finalPublishDate).format('YYYY-MM-DD HH:mm')} ` +
+                `for integration ${body.integration.id} is in the past. Auto-rescheduling to end of schedule.`
+              : `[createOrUpdatePost] Duplicate detected at ${dayjs(finalPublishDate).format('YYYY-MM-DD HH:mm')} ` +
+                `for integration ${body.integration.id}. Auto-rescheduling to end of schedule.`
           );
-          
+
           // Get posting times for this integration
           const integration = await this._integrations.model.integration.findUnique({
             where: { id: body.integration.id },
