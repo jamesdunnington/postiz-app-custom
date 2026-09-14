@@ -736,9 +736,16 @@ export class PostsRepository {
             },
           });
           
-          const postingTimesRaw = (integration?.postingTimes as any) || [];
-          const postingTimes = Array.isArray(postingTimesRaw) 
-            ? postingTimesRaw.map((t: any) => typeof t === 'number' ? { time: t } : t)
+          // postingTimes is stored as a JSON-encoded string column, not a
+          // native array - it must be parsed before the Array.isArray check
+          // below, or this always silently resolves to [] and no slot is
+          // ever found (this masked both this and the duplicate-slot branch
+          // that already used this same code below).
+          const postingTimesParsed = typeof integration?.postingTimes === 'string'
+            ? JSON.parse(integration.postingTimes || '[]')
+            : (integration?.postingTimes as any) || [];
+          const postingTimes = Array.isArray(postingTimesParsed)
+            ? postingTimesParsed.map((t: any) => typeof t === 'number' ? { time: t } : t)
             : [];
           
           const userTimezone = integration?.organization?.users?.[0]?.user?.timezone || 0;

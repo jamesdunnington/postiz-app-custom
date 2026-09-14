@@ -823,7 +823,7 @@ export class PostsService {
 
       if (
         body.type === 'now' ||
-        (body.type === 'schedule' && dayjs(body.date).isAfter(dayjs()))
+        (body.type === 'schedule' && dayjs(posts[0].publishDate).isAfter(dayjs()))
       ) {
         const delay = body.type === 'now'
           ? 0
@@ -844,7 +844,7 @@ export class PostsService {
         
         console.log(`[createPost] ✓ Post ${posts[0].id} queued successfully for integration ${post.integration.id}`);
       } else {
-        console.log(`[createPost] ⏭️ Skipping queue for post ${posts[0].id} (type: ${body.type}, date: ${body.date}, isPast: ${!dayjs(body.date).isAfter(dayjs())})`);
+        console.log(`[createPost] ⏭️ Skipping queue for post ${posts[0].id} (type: ${body.type}, publishDate: ${posts[0].publishDate}, isPast: ${!dayjs(posts[0].publishDate).isAfter(dayjs())})`);
       }
 
       Sentry.metrics.count("post_created", 1);
