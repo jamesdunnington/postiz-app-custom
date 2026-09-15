@@ -11,6 +11,7 @@ import { useToaster } from '@gitroom/react/toaster/toaster';
 import { Button } from '@gitroom/react/form/button';
 import { Input } from '@gitroom/react/form/input';
 import { Textarea } from '@gitroom/react/form/textarea';
+import { Select } from '@gitroom/react/form/select';
 import ImageWithFallback from '@gitroom/react/helpers/image.with.fallback';
 import { SVGLine } from '@gitroom/frontend/components/launches/launches.component';
 
@@ -24,48 +25,58 @@ interface IntegrationListItem {
   inBetweenSteps?: boolean;
 }
 
-interface PinterestDeleteFailedItem {
+interface PinterestBoardOption {
+  id: string;
+  name: string;
+}
+
+interface PinterestMoveFailedItem {
   id: string;
   pinId: string;
   rawInput: string;
+  targetBoardId: string;
+  targetBoardName: string;
   errorMessage: string | null;
   processedAt: string | null;
 }
 
-interface PinterestDeleteQueuedItem {
+interface PinterestMoveQueuedItem {
   id: string;
   pinId: string;
   rawInput: string;
+  targetBoardId: string;
+  targetBoardName: string;
   scheduledFor: string | null;
 }
 
-interface PinterestDeleteQueueSummary {
+interface PinterestMoveQueueSummary {
   queued: number;
-  queuedItems: PinterestDeleteQueuedItem[];
+  queuedItems: PinterestMoveQueuedItem[];
   done: number;
-  failed: PinterestDeleteFailedItem[];
+  failed: PinterestMoveFailedItem[];
   totalEverSubmitted: number;
   nextRunAt: string | null;
   lastCompletionAt: string | null;
 }
 
-interface PinterestDeletePace {
-  pinDeletePaceMinMinutes: number;
-  pinDeletePaceMaxMinutes: number;
-  pinDeletePaceBatchSize: number;
+interface PinterestMovePace {
+  pinMovePaceMinMinutes: number;
+  pinMovePaceMaxMinutes: number;
+  pinMovePaceBatchSize: number;
 }
 
 // Hard ceiling enforced by the backend too (see MAX_PINS_PER_BATCH in
-// pinterest-delete.service.ts) — a sane cap on one form submission. Multiple
+// pinterest-move.service.ts) — a sane cap on one form submission. Multiple
 // submissions append to the same ongoing per-account queue.
 const ABSOLUTE_MAX_PINS = 200;
 const DEFAULT_MAX_PINS = 100;
 
-export const PinterestCleanupComponent = () => {
+export const PinterestMoveComponent = () => {
   const fetch = useFetch();
   const toaster = useToaster();
   const [collapseMenu, setCollapseMenu] = useCookie('collapseMenu', '0');
   const [selectedIntegrationId, setSelectedIntegrationId] = useState('');
+  const [selectedBoardId, setSelectedBoardId] = useState('');
   const [pinsText, setPinsText] = useState('');
   const [maxPinsInput, setMaxPinsInput] = useState(String(DEFAULT_MAX_PINS));
   const [submitting, setSubmitting] = useState(false);
@@ -112,26 +123,48 @@ export const PinterestCleanupComponent = () => {
     }
   }, [pinterestIntegrations, selectedIntegrationId]);
 
+  // The target-board selection only makes sense for the currently selected
+  // account, so it's cleared whenever the account changes rather than
+  // silently carrying over a board id that belongs to a different account.
+  useEffect(() => {
+    setSelectedBoardId('');
+  }, [selectedIntegrationId]);
+
+  const { data: boardsData } = useSWR<PinterestBoardOption[]>(
+    selectedIntegrationId ? `pinterest-move-boards-${selectedIntegrationId}` : null,
+    async () => {
+      const response = await fetch('/integrations/function', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: 'boards',
+          id: selectedIntegrationId,
+          data: {},
+        }),
+      });
+      return response.json();
+    }
+  );
+
   const { data: queueData, mutate: mutateQueue } = useSWR<
-    PinterestDeleteQueueSummary
+    PinterestMoveQueueSummary
   >(
     selectedIntegrationId
-      ? `pinterest-delete-queue-${selectedIntegrationId}`
+      ? `pinterest-move-queue-${selectedIntegrationId}`
       : null,
     async () =>
       (
-        await fetch(`/pinterest-delete/queue?integrationId=${selectedIntegrationId}`)
+        await fetch(`/pinterest-move/queue?integrationId=${selectedIntegrationId}`)
       ).json(),
     { refreshInterval: 7000 }
   );
 
-  const { data: paceData, mutate: mutatePace } = useSWR<PinterestDeletePace>(
+  const { data: paceData, mutate: mutatePace } = useSWR<PinterestMovePace>(
     selectedIntegrationId
-      ? `pinterest-delete-pace-${selectedIntegrationId}`
+      ? `pinterest-move-pace-${selectedIntegrationId}`
       : null,
     async () =>
       (
-        await fetch(`/pinterest-delete/pace?integrationId=${selectedIntegrationId}`)
+        await fetch(`/pinterest-move/pace?integrationId=${selectedIntegrationId}`)
       ).json()
   );
 
@@ -139,9 +172,9 @@ export const PinterestCleanupComponent = () => {
   // changes or a fresh save comes back — never while the user is mid-edit.
   useEffect(() => {
     if (!paceData) return;
-    setMinMinutesInput(String(paceData.pinDeletePaceMinMinutes));
-    setMaxMinutesInput(String(paceData.pinDeletePaceMaxMinutes));
-    setBatchSizeInput(String(paceData.pinDeletePaceBatchSize));
+    setMinMinutesInput(String(paceData.pinMovePaceMinMinutes));
+    setMaxMinutesInput(String(paceData.pinMovePaceMaxMinutes));
+    setBatchSizeInput(String(paceData.pinMovePaceBatchSize));
   }, [paceData]);
 
   const onSavePace = useCallback(async () => {
@@ -160,7 +193,7 @@ export const PinterestCleanupComponent = () => {
 
     setSavingPace(true);
     try {
-      const response = await fetch('/pinterest-delete/pace', {
+      const response = await fetch('/pinterest-move/pace', {
         method: 'POST',
         body: JSON.stringify({
           integrationId: selectedIntegrationId,
@@ -227,7 +260,7 @@ export const PinterestCleanupComponent = () => {
 
       setCancelling(true);
       try {
-        const response = await fetch('/pinterest-delete/cancel', {
+        const response = await fetch('/pinterest-move/cancel', {
           method: 'POST',
           body: JSON.stringify({
             integrationId: selectedIntegrationId,
@@ -279,16 +312,30 @@ export const PinterestCleanupComponent = () => {
       return;
     }
 
+    if (!selectedBoardId) {
+      toaster.show('Select a target board first', 'warning');
+      return;
+    }
+
     if (pins.length === 0 || pins.length > maxPins) {
       toaster.show(`Paste between 1 and ${maxPins} pins`, 'warning');
       return;
     }
 
+    const targetBoardName = (boardsData || []).find(
+      (b) => b.id === selectedBoardId
+    )?.name;
+
     setSubmitting(true);
     try {
-      const response = await fetch('/pinterest-delete/batches', {
+      const response = await fetch('/pinterest-move/batches', {
         method: 'POST',
-        body: JSON.stringify({ integrationId: selectedIntegrationId, pins }),
+        body: JSON.stringify({
+          integrationId: selectedIntegrationId,
+          targetBoardId: selectedBoardId,
+          targetBoardName,
+          pins,
+        }),
       });
 
       if (!response.ok) {
@@ -303,7 +350,7 @@ export const PinterestCleanupComponent = () => {
     } finally {
       setSubmitting(false);
     }
-  }, [pinsText, selectedIntegrationId, maxPins, fetch, toaster, mutateQueue]);
+  }, [pinsText, selectedIntegrationId, selectedBoardId, boardsData, maxPins, fetch, toaster, mutateQueue]);
 
   return (
     <>
@@ -412,7 +459,7 @@ export const PinterestCleanupComponent = () => {
       </div>
 
       <div className="bg-newBgColorInner flex-1 flex flex-col gap-4 p-6 text-textColor">
-        <div className="text-xl font-semibold">Pinterest Pin Cleanup</div>
+        <div className="text-xl font-semibold">Pinterest Pin Move</div>
 
         {pinterestIntegrations.length === 0 && (
           <div>Connect a Pinterest account first to use this tool.</div>
@@ -424,6 +471,25 @@ export const PinterestCleanupComponent = () => {
 
         {selectedIntegrationId && (
           <>
+            <div className="max-w-[320px]">
+              <Select
+                label="Target board"
+                name="targetBoard"
+                disableForm={true}
+                value={selectedBoardId}
+                onChange={(e) => setSelectedBoardId(e.target.value)}
+              >
+                <option value="">
+                  {boardsData ? 'Select a board…' : 'Loading boards…'}
+                </option>
+                {(boardsData || []).map((board) => (
+                  <option key={board.id} value={board.id}>
+                    {board.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+
             <div className="max-w-[220px]">
               <Input
                 label="Max pins per submission"
@@ -440,7 +506,7 @@ export const PinterestCleanupComponent = () => {
             </div>
 
             <Textarea
-              label="Pins to delete"
+              label="Pins to move"
               name="pins"
               disableForm={true}
               className="min-h-[160px]"
@@ -457,18 +523,19 @@ export const PinterestCleanupComponent = () => {
                 disabled={
                   submitting ||
                   !selectedIntegrationId ||
+                  !selectedBoardId ||
                   pinCount === 0 ||
                   pinCount > maxPins
                 }
                 loading={submitting}
                 onClick={onSubmit}
               >
-                Submit for deletion
+                Move to board
               </Button>
             </div>
 
             <div className="flex flex-col gap-2">
-              <div className="text-lg font-semibold">Deletion pacing</div>
+              <div className="text-lg font-semibold">Move pacing</div>
               <div className="border border-newTableBorder bg-sixth rounded p-3 flex flex-col gap-3">
                 <div className="flex flex-wrap items-end gap-3">
                   <div className="max-w-[140px]">
@@ -516,9 +583,9 @@ export const PinterestCleanupComponent = () => {
                 </div>
                 <div className="text-[12px] text-customColor18">
                   {batchSizeInput && batchSizeInput !== '1'
-                    ? `Pinterest deletes ${batchSizeInput} pin(s) together every ${minMinutesInput}-${maxMinutesInput} minutes (randomized)`
-                    : `Pins are deleted one at a time, every ${minMinutesInput || '50'}-${maxMinutesInput || '60'} minutes (randomized)`}
-                  {' '}— this keeps deletions from looking spammy to Pinterest.
+                    ? `Pinterest moves ${batchSizeInput} pin(s) together every ${minMinutesInput}-${maxMinutesInput} minutes (randomized)`
+                    : `Pins are moved one at a time, every ${minMinutesInput || '50'}-${maxMinutesInput || '60'} minutes (randomized)`}
+                  {' '}— this keeps moves from looking spammy to Pinterest.
                   Only applies to pins submitted after you save; anything
                   already queued keeps its current schedule. Older, more
                   established accounts can usually tolerate a faster pace
@@ -536,7 +603,7 @@ export const PinterestCleanupComponent = () => {
                   {queueData?.totalEverSubmitted ?? 0}
                 </div>
                 <div className="text-[12px] text-customColor18">
-                  Next deletion at:{' '}
+                  Next move at:{' '}
                   {queueData?.nextRunAt
                     ? new Date(queueData.nextRunAt).toLocaleString()
                     : '—'}{' '}
@@ -588,7 +655,7 @@ export const PinterestCleanupComponent = () => {
                           onChange={() => toggleItemSelected(item.id)}
                         />
                         <div className="flex-1 truncate" title={item.rawInput}>
-                          {item.rawInput}
+                          {item.rawInput} → {item.targetBoardName}
                         </div>
                         <div className="text-[12px] text-customColor18 whitespace-nowrap">
                           {item.scheduledFor
@@ -616,7 +683,7 @@ export const PinterestCleanupComponent = () => {
                       className="border border-newTableBorder bg-sixth rounded p-3"
                     >
                       <div className="truncate" title={item.rawInput}>
-                        {item.rawInput}
+                        {item.rawInput} → {item.targetBoardName}
                       </div>
                       <div className="text-red-400 text-[12px]">
                         {item.errorMessage}

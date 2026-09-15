@@ -5,7 +5,7 @@ import {
   IsString,
 } from 'class-validator';
 
-export class PinterestDeleteBatchDto {
+export class PinterestMoveCancelDto {
   @IsString()
   integrationId: string;
 
@@ -13,5 +13,5 @@ export class PinterestDeleteBatchDto {
   @ArrayMinSize(1)
   @ArrayMaxSize(200)
   @IsString({ each: true })
-  pins: string[];
+  itemIds: string[];
 }

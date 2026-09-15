@@ -45,10 +45,8 @@ import { PublishingStateService } from '@gitroom/nestjs-libraries/redis/publishi
 import { GlobalSettingsRepository } from '@gitroom/nestjs-libraries/database/prisma/global-settings/global-settings.repository';
 import { GlobalSettingsService } from '@gitroom/nestjs-libraries/database/prisma/global-settings/global-settings.service';
 import { LlmConfigService } from '@gitroom/nestjs-libraries/llm/llm-config.service';
-import { PinterestDeleteService } from '@gitroom/nestjs-libraries/database/prisma/pinterest-delete/pinterest-delete.service';
-import { PinterestDeleteRepository } from '@gitroom/nestjs-libraries/database/prisma/pinterest-delete/pinterest-delete.repository';
-import { PinterestBoardDeleteService } from '@gitroom/nestjs-libraries/database/prisma/pinterest-board-delete/pinterest-board-delete.service';
-import { PinterestBoardDeleteRepository } from '@gitroom/nestjs-libraries/database/prisma/pinterest-board-delete/pinterest-board-delete.repository';
+import { PinterestMoveService } from '@gitroom/nestjs-libraries/database/prisma/pinterest-move/pinterest-move.service';
+import { PinterestMoveRepository } from '@gitroom/nestjs-libraries/database/prisma/pinterest-move/pinterest-move.repository';
 import { BatchScheduleService } from '@gitroom/nestjs-libraries/database/prisma/batch-schedule/batch-schedule.service';
 import { BatchScheduleRepository } from '@gitroom/nestjs-libraries/database/prisma/batch-schedule/batch-schedule.repository';
 import { PinterestBoardsService } from '@gitroom/nestjs-libraries/database/prisma/pinterest-boards/pinterest-boards.service';
@@ -106,10 +104,8 @@ import { PinterestBoardsService } from '@gitroom/nestjs-libraries/database/prism
     GlobalSettingsRepository,
     GlobalSettingsService,
     LlmConfigService,
-    PinterestDeleteService,
-    PinterestDeleteRepository,
-    PinterestBoardDeleteService,
-    PinterestBoardDeleteRepository,
+    PinterestMoveService,
+    PinterestMoveRepository,
     BatchScheduleService,
     BatchScheduleRepository,
     PinterestBoardsService,

@@ -3,17 +3,17 @@ import { createTool } from '@mastra/core/tools';
 import { Injectable } from '@nestjs/common';
 import z from 'zod';
 import { checkAuth } from '@gitroom/nestjs-libraries/chat/auth.context';
-import { PinterestBoardDeleteService } from '@gitroom/nestjs-libraries/database/prisma/pinterest-board-delete/pinterest-board-delete.service';
+import { PinterestMoveService } from '@gitroom/nestjs-libraries/database/prisma/pinterest-move/pinterest-move.service';
 
 @Injectable()
-export class PinterestCancelQueuedBoardsTool implements AgentToolInterface {
-  constructor(private _pinterestBoardDeleteService: PinterestBoardDeleteService) {}
-  name = 'pinterestCancelQueuedBoardsTool';
+export class PinterestCancelQueuedMoveItemsTool implements AgentToolInterface {
+  constructor(private _pinterestMoveService: PinterestMoveService) {}
+  name = 'pinterestCancelQueuedMoveItemsTool';
 
   run() {
     return createTool({
-      id: 'pinterestCancelQueuedBoardsTool',
-      description: `Cancels one or more boards still sitting in a Pinterest account's board-deletion queue, before they're actually deleted. Use pinterestDeleteBoardsQueueStatusTool first to see the queued items (each has an "id") and confirm exactly which ones the user means. Only items still in PENDING status can be cancelled — anything already deleted or failed is untouched. This does not undo a deletion that already happened; it only stops ones that haven't fired yet.`,
+      id: 'pinterestCancelQueuedMoveItemsTool',
+      description: `Cancels one or more pins still sitting in a Pinterest account's move queue, before they're actually moved. Use pinterestMovePinsQueueStatusTool first to see the queued items (each has an "id") and confirm exactly which ones the user means. Only items still in PENDING status can be cancelled — anything already moved or failed is untouched. This does not undo a move that already happened; it only stops ones that haven't fired yet.`,
       inputSchema: z.object({
         integrationId: z
           .string()
@@ -22,9 +22,9 @@ export class PinterestCancelQueuedBoardsTool implements AgentToolInterface {
           ),
         itemIds: z
           .array(z.string())
-          .max(25)
+          .max(200)
           .describe(
-            'The "id" values (not board ids) of queued items to cancel, from pinterestDeleteBoardsQueueStatusTool\'s queuedItems list'
+            'The "id" values (not pin ids) of queued items to cancel, from pinterestMovePinsQueueStatusTool\'s queuedItems list'
           ),
       }),
       outputSchema: z.object({
@@ -41,7 +41,7 @@ export class PinterestCancelQueuedBoardsTool implements AgentToolInterface {
           runtimeContext.get('organization') as string
         ).id;
 
-        const result = await this._pinterestBoardDeleteService.cancelItems(
+        const result = await this._pinterestMoveService.cancelItems(
           organizationId,
           context.integrationId,
           context.itemIds

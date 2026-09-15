@@ -102,7 +102,7 @@ export const useMenuItem = () => {
       path: '/media',
     },
     {
-      name: t('pinterest_cleanup', 'Pin Cleanup'),
+      name: t('pinterest_move', 'Pin Move'),
       icon: (
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -120,7 +120,7 @@ export const useMenuItem = () => {
           />
         </svg>
       ),
-      path: '/pinterest-cleanup',
+      path: '/pinterest-move',
     },
     {
       name: t('pinterest_board_creation', 'Board Creation'),
@@ -150,35 +150,6 @@ export const useMenuItem = () => {
         </svg>
       ),
       path: '/pinterest-boards',
-    },
-    {
-      name: t('pinterest_board_deletion', 'Board Deletion'),
-      icon: (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="20"
-          height="20"
-          viewBox="0 0 20 20"
-          fill="none"
-        >
-          <rect
-            x="1"
-            y="1"
-            width="18"
-            height="18"
-            rx="3"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          />
-          <path
-            d="M6 10H14"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          />
-        </svg>
-      ),
-      path: '/pinterest-board-delete',
     },
     {
       name: t('pinterest_batch_scheduling', 'Batch Scheduling'),

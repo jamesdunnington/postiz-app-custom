@@ -1,31 +1,45 @@
 import { PinterestProvider } from './pinterest.provider';
 
-describe('PinterestProvider.deleteBoard', () => {
-  it('reports success on a 204 response', async () => {
+describe('PinterestProvider.movePin', () => {
+  it('reports success on a 200 response and PATCHes the target board_id', async () => {
     const provider = new PinterestProvider();
     jest
       .spyOn(provider as any, 'fetch')
-      .mockResolvedValue({ status: 204 } as any);
+      .mockResolvedValue({ status: 200 } as any);
 
-    const result = await provider.deleteBoard('internal-id', 'token', 'board-1');
+    const result = await provider.movePin(
+      'internal-id',
+      'token',
+      'pin-1',
+      'board-2'
+    );
 
     expect(result).toEqual({ success: true });
     expect((provider as any).fetch).toHaveBeenCalledWith(
-      'https://api.pinterest.com/v5/boards/board-1',
+      'https://api.pinterest.com/v5/pins/pin-1',
       expect.objectContaining({
-        method: 'DELETE',
-        headers: { Authorization: 'Bearer token' },
+        method: 'PATCH',
+        headers: {
+          Authorization: 'Bearer token',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ board_id: 'board-2' }),
       })
     );
   });
 
-  it('reports failure on a non-2xx response', async () => {
+  it('reports failure on a non-200 response', async () => {
     const provider = new PinterestProvider();
     jest
       .spyOn(provider as any, 'fetch')
       .mockResolvedValue({ status: 404 } as any);
 
-    const result = await provider.deleteBoard('internal-id', 'token', 'board-1');
+    const result = await provider.movePin(
+      'internal-id',
+      'token',
+      'pin-1',
+      'board-2'
+    );
 
     expect(result).toEqual({ success: false });
   });

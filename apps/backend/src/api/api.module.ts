@@ -35,9 +35,8 @@ import { SetsController } from '@gitroom/backend/api/routes/sets.controller';
 import { ThirdPartyController } from '@gitroom/backend/api/routes/third-party.controller';
 import { MonitorController } from '@gitroom/backend/api/routes/monitor.controller';
 import { PublishingController } from '@gitroom/backend/api/routes/publishing.controller';
-import { PinterestDeleteController } from '@gitroom/backend/api/routes/pinterest-delete.controller';
 import { PinterestBoardsController } from '@gitroom/backend/api/routes/pinterest-boards.controller';
-import { PinterestBoardDeleteController } from '@gitroom/backend/api/routes/pinterest-board-delete.controller';
+import { PinterestMoveController } from '@gitroom/backend/api/routes/pinterest-move.controller';
 import { BatchScheduleController } from '@gitroom/backend/api/routes/batch-schedule.controller';
 
 const authenticatedController = [
@@ -59,9 +58,8 @@ const authenticatedController = [
   SetsController,
   ThirdPartyController,
   PublishingController,
-  PinterestDeleteController,
   PinterestBoardsController,
-  PinterestBoardDeleteController,
+  PinterestMoveController,
   BatchScheduleController,
 ];
 @Module({

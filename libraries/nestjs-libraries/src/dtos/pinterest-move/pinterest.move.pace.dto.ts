@@ -1,6 +1,6 @@
 import { IsInt, IsString, Max, Min } from 'class-validator';
 
-export class PinterestDeletePaceDto {
+export class PinterestMovePaceDto {
   @IsString()
   integrationId: string;
 

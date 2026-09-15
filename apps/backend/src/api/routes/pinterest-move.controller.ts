@@ -2,33 +2,35 @@ import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { Organization, User } from '@prisma/client';
 import { GetOrgFromRequest } from '@gitroom/nestjs-libraries/user/org.from.request';
 import { GetUserFromRequest } from '@gitroom/nestjs-libraries/user/user.from.request';
-import { PinterestDeleteService } from '@gitroom/nestjs-libraries/database/prisma/pinterest-delete/pinterest-delete.service';
-import { PinterestDeleteBatchDto } from '@gitroom/nestjs-libraries/dtos/pinterest-delete/pinterest.delete.batch.dto';
-import { PinterestDeleteCancelDto } from '@gitroom/nestjs-libraries/dtos/pinterest-delete/pinterest.delete.cancel.dto';
-import { PinterestDeletePaceDto } from '@gitroom/nestjs-libraries/dtos/pinterest-delete/pinterest.delete.pace.dto';
+import { PinterestMoveService } from '@gitroom/nestjs-libraries/database/prisma/pinterest-move/pinterest-move.service';
+import { PinterestMoveBatchDto } from '@gitroom/nestjs-libraries/dtos/pinterest-move/pinterest.move.batch.dto';
+import { PinterestMoveCancelDto } from '@gitroom/nestjs-libraries/dtos/pinterest-move/pinterest.move.cancel.dto';
+import { PinterestMovePaceDto } from '@gitroom/nestjs-libraries/dtos/pinterest-move/pinterest.move.pace.dto';
 
-@Controller('/pinterest-delete')
-export class PinterestDeleteController {
-  constructor(private _pinterestDeleteService: PinterestDeleteService) {}
+@Controller('/pinterest-move')
+export class PinterestMoveController {
+  constructor(private _pinterestMoveService: PinterestMoveService) {}
 
   @Post('/batches')
   createBatch(
     @GetOrgFromRequest() org: Organization,
     @GetUserFromRequest() user: User,
-    @Body() body: PinterestDeleteBatchDto
+    @Body() body: PinterestMoveBatchDto
   ) {
-    return this._pinterestDeleteService.createBatch(
+    return this._pinterestMoveService.createBatch(
       org.id,
       body.integrationId,
       user.id,
       'MANUAL',
+      body.targetBoardId,
+      body.targetBoardName,
       body.pins
     );
   }
 
   @Get('/queue')
   getQueue(@Query('integrationId') integrationId: string) {
-    return this._pinterestDeleteService.listQueueSummary(integrationId);
+    return this._pinterestMoveService.listQueueSummary(integrationId);
   }
 
   @Get('/pace')
@@ -36,15 +38,15 @@ export class PinterestDeleteController {
     @GetOrgFromRequest() org: Organization,
     @Query('integrationId') integrationId: string
   ) {
-    return this._pinterestDeleteService.getPacingSettings(org.id, integrationId);
+    return this._pinterestMoveService.getPacingSettings(org.id, integrationId);
   }
 
   @Post('/pace')
   updatePace(
     @GetOrgFromRequest() org: Organization,
-    @Body() body: PinterestDeletePaceDto
+    @Body() body: PinterestMovePaceDto
   ) {
-    return this._pinterestDeleteService.updatePacingSettings(
+    return this._pinterestMoveService.updatePacingSettings(
       org.id,
       body.integrationId,
       {
@@ -58,9 +60,9 @@ export class PinterestDeleteController {
   @Post('/cancel')
   cancel(
     @GetOrgFromRequest() org: Organization,
-    @Body() body: PinterestDeleteCancelDto
+    @Body() body: PinterestMoveCancelDto
   ) {
-    return this._pinterestDeleteService.cancelItems(
+    return this._pinterestMoveService.cancelItems(
       org.id,
       body.integrationId,
       body.itemIds

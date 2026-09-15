@@ -3,17 +3,17 @@ import { createTool } from '@mastra/core/tools';
 import { Injectable } from '@nestjs/common';
 import z from 'zod';
 import { checkAuth } from '@gitroom/nestjs-libraries/chat/auth.context';
-import { PinterestBoardDeleteService } from '@gitroom/nestjs-libraries/database/prisma/pinterest-board-delete/pinterest-board-delete.service';
+import { PinterestMoveService } from '@gitroom/nestjs-libraries/database/prisma/pinterest-move/pinterest-move.service';
 
 @Injectable()
-export class PinterestDeleteBoardsQueueStatusTool implements AgentToolInterface {
-  constructor(private _pinterestBoardDeleteService: PinterestBoardDeleteService) {}
-  name = 'pinterestDeleteBoardsQueueStatusTool';
+export class PinterestMovePinsQueueStatusTool implements AgentToolInterface {
+  constructor(private _pinterestMoveService: PinterestMoveService) {}
+  name = 'pinterestMovePinsQueueStatusTool';
 
   run() {
     return createTool({
-      id: 'pinterestDeleteBoardsQueueStatusTool',
-      description: `Read-only lookup of a Pinterest account's board-deletion queue: how many boards are still queued, how many have been deleted, when the next deletion will run, and when the whole queue will finish draining (one board every 300-320 minutes, randomized). Also returns any boards that failed to delete, with the reason. For the full per-board Pending/Deleted/Failed breakdown, check the Board Deletion tab in the app — this returns aggregate counts and failures only. Does not submit or change anything.`,
+      id: 'pinterestMovePinsQueueStatusTool',
+      description: `Read-only lookup of a Pinterest account's pin-move queue: how many pins are still queued, how many have been moved, when the next move will run, and when the whole queue will finish draining (one pin every 50-60 minutes, randomized). Also returns any pins that failed to move, with the reason. Does not submit or change anything.`,
       inputSchema: z.object({
         integrationId: z
           .string()
@@ -27,8 +27,10 @@ export class PinterestDeleteBoardsQueueStatusTool implements AgentToolInterface 
           queuedItems: z.array(
             z.object({
               id: z.string(),
-              boardId: z.string(),
-              boardName: z.string(),
+              pinId: z.string(),
+              rawInput: z.string(),
+              targetBoardId: z.string(),
+              targetBoardName: z.string(),
               scheduledFor: z.string().nullable(),
             })
           ),
@@ -38,8 +40,10 @@ export class PinterestDeleteBoardsQueueStatusTool implements AgentToolInterface 
           lastCompletionAt: z.string().nullable(),
           failed: z.array(
             z.object({
-              boardId: z.string(),
-              boardName: z.string(),
+              pinId: z.string(),
+              rawInput: z.string(),
+              targetBoardId: z.string(),
+              targetBoardName: z.string(),
               errorMessage: z.string().nullable(),
             })
           ),
@@ -49,32 +53,38 @@ export class PinterestDeleteBoardsQueueStatusTool implements AgentToolInterface 
         const { context } = args;
         checkAuth(args, options);
 
-        const summary = await this._pinterestBoardDeleteService.listQueueSummary(
+        const summary = await this._pinterestMoveService.listQueueSummary(
           context.integrationId
         );
 
         return {
           output: {
             queued: summary.queued,
-            queuedItems: summary.items
-              .filter((i) => i.status === 'PENDING')
-              .map(({ id, boardId, boardName, scheduledFor }) => ({
+            queuedItems: summary.queuedItems.map(
+              ({ id, pinId, rawInput, targetBoardId, targetBoardName, scheduledFor }) => ({
                 id,
-                boardId,
-                boardName,
+                pinId,
+                rawInput,
+                targetBoardId,
+                targetBoardName,
                 scheduledFor: scheduledFor ? scheduledFor.toISOString() : null,
-              })),
+              })
+            ),
             done: summary.done,
             totalEverSubmitted: summary.totalEverSubmitted,
             nextRunAt: summary.nextRunAt ? summary.nextRunAt.toISOString() : null,
             lastCompletionAt: summary.lastCompletionAt
               ? summary.lastCompletionAt.toISOString()
               : null,
-            failed: summary.failed.map(({ boardId, boardName, errorMessage }) => ({
-              boardId,
-              boardName,
-              errorMessage,
-            })),
+            failed: summary.failed.map(
+              ({ pinId, rawInput, targetBoardId, targetBoardName, errorMessage }) => ({
+                pinId,
+                rawInput,
+                targetBoardId,
+                targetBoardName,
+                errorMessage,
+              })
+            ),
           },
         };
       },

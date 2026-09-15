@@ -1,4 +1,4 @@
-// Chains `count` new deletion slots off `startingPointer` (the last slot
+// Chains `count` new move slots off `startingPointer` (the last slot
 // already promised to this integration's queue), each one random(minMinutes,
 // maxMinutes) after the previous — inclusive on both ends, freshly rolled
 // per item, so consecutive real-world gaps look human rather than uniform.
@@ -7,7 +7,7 @@
 //
 // batchSize (default 1, preserving prior one-pin-per-slot behavior) groups
 // every `batchSize` consecutive items onto the same slot, so a slot means
-// "delete this many pins together" rather than always exactly one.
+// "move this many pins together" rather than always exactly one.
 export function computeChainedSlots(
   startingPointer: Date | null,
   count: number,

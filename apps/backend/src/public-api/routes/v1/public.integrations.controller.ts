@@ -31,8 +31,8 @@ import axios from 'axios';
 import { Readable } from 'stream';
 import { lookup } from 'mime-types';
 import * as Sentry from '@sentry/nestjs';
-import { PinterestDeleteService } from '@gitroom/nestjs-libraries/database/prisma/pinterest-delete/pinterest-delete.service';
-import { PinterestDeleteBatchDto } from '@gitroom/nestjs-libraries/dtos/pinterest-delete/pinterest.delete.batch.dto';
+import { PinterestMoveService } from '@gitroom/nestjs-libraries/database/prisma/pinterest-move/pinterest-move.service';
+import { PinterestMoveBatchDto } from '@gitroom/nestjs-libraries/dtos/pinterest-move/pinterest.move.batch.dto';
 
 @ApiTags('Public API')
 @Controller('/public/v1')
@@ -43,20 +43,22 @@ export class PublicIntegrationsController {
     private _integrationService: IntegrationService,
     private _postsService: PostsService,
     private _mediaService: MediaService,
-    private _pinterestDeleteService: PinterestDeleteService
+    private _pinterestMoveService: PinterestMoveService
   ) {}
 
-  @Post('/pinterest/delete-batch')
-  async pinterestDeleteBatch(
+  @Post('/pinterest/move-batch')
+  async pinterestMoveBatch(
     @GetOrgFromRequest() org: Organization,
-    @Body() body: PinterestDeleteBatchDto
+    @Body() body: PinterestMoveBatchDto
   ) {
     Sentry.metrics.count('public_api-request', 1);
-    return this._pinterestDeleteService.createBatch(
+    return this._pinterestMoveService.createBatch(
       org.id,
       body.integrationId,
       null,
       'API',
+      body.targetBoardId,
+      body.targetBoardName,
       body.pins
     );
   }

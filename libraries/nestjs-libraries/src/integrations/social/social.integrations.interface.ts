@@ -84,21 +84,17 @@ export interface ISocialMediaIntegration {
     postDetails: PostDetails[],
     integration: Integration
   ): Promise<PostResponse[]>; // Schedules a new post
-  deletePin?(
+  movePin?(
     id: string,
     accessToken: string,
-    pinId: string
+    pinId: string,
+    targetBoardId: string
   ): Promise<{ success: boolean }>;
   createBoard?(
     id: string,
     accessToken: string,
     board: { name: string; description?: string; isPrivate?: boolean }
   ): Promise<{ id: string }>;
-  deleteBoard?(
-    id: string,
-    accessToken: string,
-    boardId: string
-  ): Promise<{ success: boolean }>;
   boards?(
     accessToken: string,
     data?: { includeArchived?: boolean }

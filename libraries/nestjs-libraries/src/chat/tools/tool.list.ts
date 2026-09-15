@@ -13,13 +13,10 @@ import { IntegrationDeletePostTool } from '@gitroom/nestjs-libraries/chat/tools/
 import { IntegrationEditPostDateTool } from '@gitroom/nestjs-libraries/chat/tools/integration.edit.post.date.tool';
 import { IntegrationEditPostContentTool } from '@gitroom/nestjs-libraries/chat/tools/integration.edit.post.content.tool';
 import { IntegrationAnalyticsTool } from '@gitroom/nestjs-libraries/chat/tools/integration.analytics.tool';
-import { PinterestBulkDeletePinsTool } from '@gitroom/nestjs-libraries/chat/tools/pinterest.bulk.delete.pins.tool';
 import { PinterestCreateBoardsTool } from '@gitroom/nestjs-libraries/chat/tools/pinterest.create.boards.tool';
-import { PinterestBulkDeleteBoardsTool } from '@gitroom/nestjs-libraries/chat/tools/pinterest.bulk.delete.boards.tool';
-import { PinterestDeletePinsQueueStatusTool } from '@gitroom/nestjs-libraries/chat/tools/pinterest.delete.pins.queue.status.tool';
-import { PinterestDeleteBoardsQueueStatusTool } from '@gitroom/nestjs-libraries/chat/tools/pinterest.delete.boards.queue.status.tool';
-import { PinterestCancelQueuedPinsTool } from '@gitroom/nestjs-libraries/chat/tools/pinterest.cancel.queued.pins.tool';
-import { PinterestCancelQueuedBoardsTool } from '@gitroom/nestjs-libraries/chat/tools/pinterest.cancel.queued.boards.tool';
+import { PinterestBulkMovePinsTool } from '@gitroom/nestjs-libraries/chat/tools/pinterest.bulk.move.pins.tool';
+import { PinterestMovePinsQueueStatusTool } from '@gitroom/nestjs-libraries/chat/tools/pinterest.move.pins.queue.status.tool';
+import { PinterestCancelQueuedMoveItemsTool } from '@gitroom/nestjs-libraries/chat/tools/pinterest.cancel.queued.move.items.tool';
 
 export const toolList = [
   IntegrationListTool,
@@ -37,11 +34,8 @@ export const toolList = [
   IntegrationEditPostDateTool,
   IntegrationEditPostContentTool,
   IntegrationAnalyticsTool,
-  PinterestBulkDeletePinsTool,
   PinterestCreateBoardsTool,
-  PinterestBulkDeleteBoardsTool,
-  PinterestDeletePinsQueueStatusTool,
-  PinterestDeleteBoardsQueueStatusTool,
-  PinterestCancelQueuedPinsTool,
-  PinterestCancelQueuedBoardsTool,
+  PinterestBulkMovePinsTool,
+  PinterestMovePinsQueueStatusTool,
+  PinterestCancelQueuedMoveItemsTool,
 ];

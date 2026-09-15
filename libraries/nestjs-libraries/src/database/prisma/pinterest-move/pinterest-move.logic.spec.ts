@@ -1,4 +1,4 @@
-import { parsePinInput } from './pinterest-delete.logic';
+import { parsePinInput } from './pinterest-move.logic';
 
 describe('parsePinInput', () => {
   it('accepts a bare numeric pin id', () => {

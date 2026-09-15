@@ -2,16 +2,15 @@ import { Injectable } from '@nestjs/common';
 import dayjs from 'dayjs';
 import * as Sentry from '@sentry/nestjs';
 import { Integration } from '@prisma/client';
-import { PinterestDeleteRepository } from '@gitroom/nestjs-libraries/database/prisma/pinterest-delete/pinterest-delete.repository';
-import { parsePinInput } from '@gitroom/nestjs-libraries/database/prisma/pinterest-delete/pinterest-delete.logic';
+import { PinterestMoveRepository } from '@gitroom/nestjs-libraries/database/prisma/pinterest-move/pinterest-move.repository';
+import { parsePinInput } from '@gitroom/nestjs-libraries/database/prisma/pinterest-move/pinterest-move.logic';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import { BullMqClient } from '@gitroom/nestjs-libraries/bull-mq-transport-new/client';
 
-// Two rolling 24h windows' worth of pins under the old quota model — kept as
-// the per-submission cap under the new timer model too, just as a sane
-// upper bound on a single form submission (the queue itself has no total
-// size limit; you can submit again to append more).
+// Sane upper bound on a single form submission (the queue itself has no
+// total size limit; you can submit again to append more to the same
+// account's ongoing queue).
 const MAX_PINS_PER_BATCH = 200;
 
 // Sane guardrails so a per-integration override can't accidentally recreate
@@ -21,9 +20,9 @@ const MAX_ALLOWED_MINUTES = 1440; // 24h
 const MAX_ALLOWED_BATCH_SIZE = 10;
 
 @Injectable()
-export class PinterestDeleteService {
+export class PinterestMoveService {
   constructor(
-    private _repository: PinterestDeleteRepository,
+    private _repository: PinterestMoveRepository,
     private _integrationService: IntegrationService,
     private _integrationManager: IntegrationManager,
     private _workerServiceProducer: BullMqClient
@@ -34,6 +33,8 @@ export class PinterestDeleteService {
     integrationId: string,
     createdByUserId: string | null,
     source: 'MANUAL' | 'API' | 'MCP',
+    targetBoardId: string,
+    targetBoardName: string | undefined,
     rawPinInputs: string[]
   ): Promise<{ batchId: string; submittedCount: number }> {
     if (rawPinInputs.length === 0 || rawPinInputs.length > MAX_PINS_PER_BATCH) {
@@ -70,16 +71,36 @@ export class PinterestDeleteService {
       );
     }
 
+    // The frontend (MANUAL) already has the board list loaded and always
+    // supplies the name directly. The public API and MCP paths may only
+    // have the id, so resolve the name by listing boards — but a lookup
+    // miss is never fatal here, the id alone is enough to perform the move.
+    let resolvedBoardName = targetBoardName;
+    if (!resolvedBoardName) {
+      try {
+        const accessToken = await this.getValidAccessToken(integration);
+        const provider =
+          this._integrationManager.getSocialIntegration('pinterest');
+        const boardsList = (await provider.boards?.(accessToken)) || [];
+        const match = boardsList.find((b: any) => b.id === targetBoardId);
+        resolvedBoardName = match?.name || targetBoardId;
+      } catch (err) {
+        resolvedBoardName = targetBoardId;
+      }
+    }
+
     const batch = await this._repository.createBatchWithItems(
       organizationId,
       integrationId,
       createdByUserId,
       source,
+      targetBoardId,
+      resolvedBoardName,
       parsedPins as { pinId: string; rawInput: string }[]
     );
 
     for (const item of batch.items) {
-      this._workerServiceProducer.emit('pinterest-delete-pin', {
+      this._workerServiceProducer.emit('pinterest-move-pin', {
         id: item.id,
         options: { delay: Math.max(0, item.scheduledFor!.getTime() - Date.now()) },
         payload: { itemId: item.id },
@@ -100,28 +121,29 @@ export class PinterestDeleteService {
       const accessToken = await this.getValidAccessToken(item.integration);
       const provider =
         this._integrationManager.getSocialIntegration('pinterest');
-      const result = await provider.deletePin?.(
+      const result = await provider.movePin?.(
         item.integration.internalId,
         accessToken,
-        item.pinId
+        item.pinId,
+        item.targetBoardId
       );
 
       if (!result?.success) {
         await this._repository.markItemFailed(
           itemId,
-          'Pinterest reported the deletion failed'
+          'Pinterest reported the move failed'
         );
         return;
       }
 
-      await this._repository.markItemRemoved(itemId);
+      await this._repository.markItemMoved(itemId);
     } catch (err) {
       await this._repository.markItemFailed(
         itemId,
         err instanceof Error ? err.message : 'Unknown error'
       );
       Sentry.captureException(err, {
-        extra: { context: 'PinterestDeleteService.processItem', itemId },
+        extra: { context: 'PinterestMoveService.processItem', itemId },
       });
     }
   }
@@ -187,12 +209,12 @@ export class PinterestDeleteService {
 
     for (const item of overdue) {
       try {
-        await this._workerServiceProducer.delete('pinterest-delete-pin', item.id);
+        await this._workerServiceProducer.delete('pinterest-move-pin', item.id);
       } catch (err) {
         // No existing job to remove (already consumed or never created) —
         // that's exactly the case this recovery exists for.
       }
-      this._workerServiceProducer.emit('pinterest-delete-pin', {
+      this._workerServiceProducer.emit('pinterest-move-pin', {
         id: item.id,
         options: { delay: 0 },
         payload: { itemId: item.id },
@@ -211,7 +233,7 @@ export class PinterestDeleteService {
   }
 
   // Only affects slots computed for pins submitted after this call — the
-  // repository chains new slots off pinDeleteNextSlot without touching any
+  // repository chains new slots off pinMoveNextSlot without touching any
   // item that already has a scheduledFor, so already-queued pins keep
   // running on the pace they were submitted under.
   async updatePacingSettings(
@@ -264,7 +286,7 @@ export class PinterestDeleteService {
 
     for (const id of cancelledIds) {
       try {
-        await this._workerServiceProducer.delete('pinterest-delete-pin', id);
+        await this._workerServiceProducer.delete('pinterest-move-pin', id);
       } catch (err) {
         // No matching delayed job (already fired, or never created) — the
         // DB row is already gone either way, so there's nothing left to do.
@@ -272,51 +294,5 @@ export class PinterestDeleteService {
     }
 
     return { cancelledIds };
-  }
-
-  // One-time (idempotent) cutover migration: folds any item still carrying
-  // a pre-cutover status ("QUEUED"/"WAITING_FOR_QUOTA" from the old quota
-  // model) into the new chain, in original submission order, and re-emits
-  // its BullMQ job. Safe to call on every boot — once no legacy rows
-  // remain, it's a no-op.
-  async migrateLegacyItems(): Promise<number> {
-    const legacyItems = await this._repository.findLegacyStatusItems();
-    if (legacyItems.length === 0) {
-      return 0;
-    }
-
-    const byIntegration = new Map<string, typeof legacyItems>();
-    for (const item of legacyItems) {
-      const list = byIntegration.get(item.integrationId) || [];
-      list.push(item);
-      byIntegration.set(item.integrationId, list);
-    }
-
-    let migrated = 0;
-    for (const [integrationId, items] of byIntegration) {
-      const itemIdsOldestFirst = items
-        .slice()
-        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-        .map((i) => i.id);
-
-      const updated = await this._repository.rescheduleItems(
-        integrationId,
-        itemIdsOldestFirst
-      );
-
-      for (const item of updated) {
-        this._workerServiceProducer.emit('pinterest-delete-pin', {
-          id: item.id,
-          options: {
-            delay: Math.max(0, item.scheduledFor!.getTime() - Date.now()),
-          },
-          payload: { itemId: item.id },
-        });
-      }
-
-      migrated += updated.length;
-    }
-
-    return migrated;
   }
 }

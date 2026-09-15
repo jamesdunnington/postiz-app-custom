@@ -3,21 +3,23 @@ import {
   PrismaRepository,
   PrismaTransaction,
 } from '@gitroom/nestjs-libraries/database/prisma/prisma.service';
-import { computeChainedSlots } from '@gitroom/nestjs-libraries/database/prisma/pinterest-delete/pinterest-delete-scheduling.logic';
+import { computeChainedSlots } from '@gitroom/nestjs-libraries/database/prisma/pinterest-move/pinterest-move-scheduling.logic';
 
 // Fallbacks only — every Integration row carries its own pace via
-// pinDeletePaceMin/MaxMinutes + pinDeletePaceBatchSize (defaulted to these
-// same values in the schema), editable per account instead of blanket.
-const PIN_DELETE_MIN_MINUTES = 50;
-const PIN_DELETE_MAX_MINUTES = 60;
-const PIN_DELETE_BATCH_SIZE = 1;
+// pinMovePaceMin/MaxMinutes + pinMovePaceBatchSize (defaulted to these same
+// values in the schema), editable per account instead of blanket.
+const PIN_MOVE_MIN_MINUTES = 50;
+const PIN_MOVE_MAX_MINUTES = 60;
+const PIN_MOVE_BATCH_SIZE = 1;
 
-export interface PinterestDeleteQueueSummary {
+export interface PinterestMoveQueueSummary {
   queued: number;
   queuedItems: {
     id: string;
     pinId: string;
     rawInput: string;
+    targetBoardId: string;
+    targetBoardName: string;
     scheduledFor: Date | null;
   }[];
   done: number;
@@ -25,6 +27,8 @@ export interface PinterestDeleteQueueSummary {
     id: string;
     pinId: string;
     rawInput: string;
+    targetBoardId: string;
+    targetBoardName: string;
     errorMessage: string | null;
     processedAt: Date | null;
   }[];
@@ -34,47 +38,50 @@ export interface PinterestDeleteQueueSummary {
 }
 
 @Injectable()
-export class PinterestDeleteRepository {
+export class PinterestMoveRepository {
   constructor(
-    private _batch: PrismaRepository<'pinterestDeleteBatch'>,
-    private _item: PrismaRepository<'pinterestDeleteItem'>,
+    private _batch: PrismaRepository<'pinterestMoveBatch'>,
+    private _item: PrismaRepository<'pinterestMoveItem'>,
     private _integration: PrismaRepository<'integration'>,
     private _transaction: PrismaTransaction
   ) {}
 
   // Computes each new item's slot by chaining off the integration's
-  // pinDeleteNextSlot pointer, then creates the batch + items and advances
+  // pinMoveNextSlot pointer, then creates the batch + items and advances
   // the pointer, all inside one transaction — so two submissions for the
-  // same account never compute off the same stale pointer.
+  // same account never compute off the same stale pointer. Every item in
+  // the batch shares the one target board chosen for this submission.
   createBatchWithItems(
     organizationId: string,
     integrationId: string,
     createdByUserId: string | null,
     source: 'MANUAL' | 'API' | 'MCP',
+    targetBoardId: string,
+    targetBoardName: string,
     parsedPins: { pinId: string; rawInput: string }[]
   ) {
     return this._transaction.model.$transaction(async (tx) => {
       const integration = await tx.integration.findUniqueOrThrow({
         where: { id: integrationId },
         select: {
-          pinDeleteNextSlot: true,
-          pinDeletePaceMinMinutes: true,
-          pinDeletePaceMaxMinutes: true,
-          pinDeletePaceBatchSize: true,
+          pinMoveNextSlot: true,
+          pinMovePaceMinMinutes: true,
+          pinMovePaceMaxMinutes: true,
+          pinMovePaceBatchSize: true,
         },
       });
 
       const slots = computeChainedSlots(
-        integration.pinDeleteNextSlot,
+        integration.pinMoveNextSlot,
         parsedPins.length,
-        integration.pinDeletePaceMinMinutes ?? PIN_DELETE_MIN_MINUTES,
-        integration.pinDeletePaceMaxMinutes ?? PIN_DELETE_MAX_MINUTES,
+        integration.pinMovePaceMinMinutes ?? PIN_MOVE_MIN_MINUTES,
+        integration.pinMovePaceMaxMinutes ?? PIN_MOVE_MAX_MINUTES,
         new Date(),
         Math.random,
-        integration.pinDeletePaceBatchSize ?? PIN_DELETE_BATCH_SIZE
+        integration.pinMovePaceBatchSize ?? PIN_MOVE_BATCH_SIZE
       );
 
-      const batch = await tx.pinterestDeleteBatch.create({
+      const batch = await tx.pinterestMoveBatch.create({
         data: {
           organizationId,
           integrationId,
@@ -86,6 +93,8 @@ export class PinterestDeleteRepository {
               integrationId,
               pinId,
               rawInput,
+              targetBoardId,
+              targetBoardName,
               status: 'PENDING',
               scheduledFor: slots[i],
             })),
@@ -96,7 +105,7 @@ export class PinterestDeleteRepository {
 
       await tx.integration.update({
         where: { id: integrationId },
-        data: { pinDeleteNextSlot: slots[slots.length - 1] },
+        data: { pinMoveNextSlot: slots[slots.length - 1] },
       });
 
       return batch;
@@ -104,95 +113,43 @@ export class PinterestDeleteRepository {
   }
 
   getItemById(itemId: string) {
-    return this._item.model.pinterestDeleteItem.findUnique({
+    return this._item.model.pinterestMoveItem.findUnique({
       where: { id: itemId },
       include: { integration: true },
     });
   }
 
-  markItemRemoved(itemId: string) {
-    return this._item.model.pinterestDeleteItem.update({
+  markItemMoved(itemId: string) {
+    return this._item.model.pinterestMoveItem.update({
       where: { id: itemId },
-      data: { status: 'REMOVED', processedAt: new Date() },
+      data: { status: 'MOVED', processedAt: new Date() },
     });
   }
 
   markItemFailed(itemId: string, errorMessage: string) {
-    return this._item.model.pinterestDeleteItem.update({
+    return this._item.model.pinterestMoveItem.update({
       where: { id: itemId },
       data: { status: 'FAILED', errorMessage, processedAt: new Date() },
     });
   }
 
-  // Rows still carrying a pre-cutover status value ("QUEUED" or
-  // "WAITING_FOR_QUOTA" from the old quota model, since retired) — never
-  // matched by any query in the new model, so they'd otherwise sit
-  // forgotten in the table forever after this deploy.
-  findLegacyStatusItems() {
-    return this._item.model.pinterestDeleteItem.findMany({
-      where: { status: { notIn: ['PENDING', 'REMOVED', 'FAILED'] } },
-    });
-  }
-
-  // Folds pre-cutover items into the new chain as if they were just
-  // submitted (in their original createdAt order), so nothing queued
-  // before this deploy is silently lost.
-  rescheduleItems(integrationId: string, itemIdsOldestFirst: string[]) {
-    return this._transaction.model.$transaction(async (tx) => {
-      const integration = await tx.integration.findUniqueOrThrow({
-        where: { id: integrationId },
-        select: {
-          pinDeleteNextSlot: true,
-          pinDeletePaceMinMinutes: true,
-          pinDeletePaceMaxMinutes: true,
-          pinDeletePaceBatchSize: true,
-        },
-      });
-
-      const slots = computeChainedSlots(
-        integration.pinDeleteNextSlot,
-        itemIdsOldestFirst.length,
-        integration.pinDeletePaceMinMinutes ?? PIN_DELETE_MIN_MINUTES,
-        integration.pinDeletePaceMaxMinutes ?? PIN_DELETE_MAX_MINUTES,
-        new Date(),
-        Math.random,
-        integration.pinDeletePaceBatchSize ?? PIN_DELETE_BATCH_SIZE
-      );
-
-      const updated = [];
-      for (let i = 0; i < itemIdsOldestFirst.length; i++) {
-        updated.push(
-          await tx.pinterestDeleteItem.update({
-            where: { id: itemIdsOldestFirst[i] },
-            data: { status: 'PENDING', scheduledFor: slots[i] },
-          })
-        );
-      }
-
-      await tx.integration.update({
-        where: { id: integrationId },
-        data: { pinDeleteNextSlot: slots[slots.length - 1] },
-      });
-
-      return updated;
-    });
-  }
-
   findOverdueItems(staleBefore: Date) {
-    return this._item.model.pinterestDeleteItem.findMany({
+    return this._item.model.pinterestMoveItem.findMany({
       where: { status: 'PENDING', scheduledFor: { lt: staleBefore } },
     });
   }
 
   async getQueueSummary(
     integrationId: string
-  ): Promise<PinterestDeleteQueueSummary> {
-    const items = await this._item.model.pinterestDeleteItem.findMany({
+  ): Promise<PinterestMoveQueueSummary> {
+    const items = await this._item.model.pinterestMoveItem.findMany({
       where: { integrationId },
       select: {
         id: true,
         pinId: true,
         rawInput: true,
+        targetBoardId: true,
+        targetBoardName: true,
         status: true,
         scheduledFor: true,
         errorMessage: true,
@@ -208,22 +165,30 @@ export class PinterestDeleteRepository {
 
     return {
       queued: pending.length,
-      queuedItems: pendingSorted.map(({ id, pinId, rawInput, scheduledFor }) => ({
-        id,
-        pinId,
-        rawInput,
-        scheduledFor,
-      })),
-      done: items.filter((i) => i.status === 'REMOVED').length,
-      failed: items
-        .filter((i) => i.status === 'FAILED')
-        .map(({ id, pinId, rawInput, errorMessage, processedAt }) => ({
+      queuedItems: pendingSorted.map(
+        ({ id, pinId, rawInput, targetBoardId, targetBoardName, scheduledFor }) => ({
           id,
           pinId,
           rawInput,
-          errorMessage,
-          processedAt,
-        })),
+          targetBoardId,
+          targetBoardName,
+          scheduledFor,
+        })
+      ),
+      done: items.filter((i) => i.status === 'MOVED').length,
+      failed: items
+        .filter((i) => i.status === 'FAILED')
+        .map(
+          ({ id, pinId, rawInput, targetBoardId, targetBoardName, errorMessage, processedAt }) => ({
+            id,
+            pinId,
+            rawInput,
+            targetBoardId,
+            targetBoardName,
+            errorMessage,
+            processedAt,
+          })
+        ),
       totalEverSubmitted: items.length,
       nextRunAt: pendingSorted[0]?.scheduledFor ?? null,
       lastCompletionAt:
@@ -232,7 +197,7 @@ export class PinterestDeleteRepository {
   }
 
   // Only PENDING items belonging to this integration are eligible — already
-  // REMOVED/FAILED ids passed in are silently ignored rather than erroring,
+  // MOVED/FAILED ids passed in are silently ignored rather than erroring,
   // since the caller's selection may be stale by the time this runs (e.g.
   // the queue drained one more pin in the background). Returns the ids that
   // were actually deleted, so the caller can also drop their BullMQ delayed
@@ -242,30 +207,30 @@ export class PinterestDeleteRepository {
   async cancelItems(integrationId: string, itemIds: string[]): Promise<string[]> {
     if (itemIds.length === 0) return [];
 
-    const matching = await this._item.model.pinterestDeleteItem.findMany({
+    const matching = await this._item.model.pinterestMoveItem.findMany({
       where: { integrationId, id: { in: itemIds }, status: 'PENDING' },
       select: { id: true },
     });
     if (matching.length === 0) return [];
 
-    await this._item.model.pinterestDeleteItem.deleteMany({
+    await this._item.model.pinterestMoveItem.deleteMany({
       where: { id: { in: matching.map((i) => i.id) } },
     });
 
     return matching.map((i) => i.id);
   }
 
-  // Deletes REMOVED/FAILED items older than `cutoff`, then deletes any
-  // batch left with zero remaining items (batches have no display value
-  // once empty). PENDING items are never touched regardless of age.
+  // Deletes MOVED/FAILED items older than `cutoff`, then deletes any batch
+  // left with zero remaining items (batches have no display value once
+  // empty). PENDING items are never touched regardless of age.
   async purgeCompletedItemsOlderThan(cutoff: Date): Promise<number> {
-    const result = await this._item.model.pinterestDeleteItem.deleteMany({
+    const result = await this._item.model.pinterestMoveItem.deleteMany({
       where: {
-        status: { in: ['REMOVED', 'FAILED'] },
+        status: { in: ['MOVED', 'FAILED'] },
         processedAt: { lt: cutoff },
       },
     });
-    await this._batch.model.pinterestDeleteBatch.deleteMany({
+    await this._batch.model.pinterestMoveBatch.deleteMany({
       where: { items: { none: {} } },
     });
     return result.count;
@@ -277,9 +242,9 @@ export class PinterestDeleteRepository {
     return this._integration.model.integration.findFirstOrThrow({
       where: { id: integrationId, organizationId },
       select: {
-        pinDeletePaceMinMinutes: true,
-        pinDeletePaceMaxMinutes: true,
-        pinDeletePaceBatchSize: true,
+        pinMovePaceMinMinutes: true,
+        pinMovePaceMaxMinutes: true,
+        pinMovePaceBatchSize: true,
       },
     });
   }
@@ -295,9 +260,9 @@ export class PinterestDeleteRepository {
     const { count } = await this._integration.model.integration.updateMany({
       where: { id: integrationId, organizationId },
       data: {
-        pinDeletePaceMinMinutes: pace.minMinutes,
-        pinDeletePaceMaxMinutes: pace.maxMinutes,
-        pinDeletePaceBatchSize: pace.batchSize,
+        pinMovePaceMinMinutes: pace.minMinutes,
+        pinMovePaceMaxMinutes: pace.maxMinutes,
+        pinMovePaceBatchSize: pace.batchSize,
       },
     });
     if (count === 0) {
