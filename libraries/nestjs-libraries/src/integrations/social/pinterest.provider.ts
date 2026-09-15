@@ -29,9 +29,13 @@ export class PinterestProvider
   isBetweenSteps = false;
   scopes = [
     'boards:read',
+    'boards:read_secret',
     'boards:write',
+    'boards:write_secret',
     'pins:read',
+    'pins:read_secret',
     'pins:write',
+    'pins:write_secret',
     'user_accounts:read',
   ];
   override maxConcurrentJob = 3; // Pinterest has more lenient rate limits
@@ -107,7 +111,7 @@ export class PinterestProvider
       }&redirect_uri=${encodeURIComponent(
         `${process.env.FRONTEND_URL}/integrations/social/pinterest`
       )}&response_type=code&scope=${encodeURIComponent(
-        'boards:read,boards:write,pins:read,pins:write,user_accounts:read'
+        this.scopes.join(',')
       )}&state=${state}`,
       codeVerifier: makeId(10),
       state,
