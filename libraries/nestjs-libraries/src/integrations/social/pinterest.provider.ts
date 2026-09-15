@@ -163,18 +163,23 @@ export class PinterestProvider
   }
 
   @Tool({ description: 'List of boards', dataSchema: [] })
-  async boards(accessToken: string, data?: { includeArchived?: boolean }) {
+  async boards(
+    accessToken: string,
+    data?: { includeArchived?: boolean; privacy?: 'ALL' | 'PUBLIC' | 'PROTECTED' | 'SECRET' | 'PUBLIC_AND_SECRET' }
+  ) {
     let allBoards: any[] = [];
     let bookmark: string | undefined = undefined;
     let hasMore = true;
     let pageCount = 0;
     const maxPages = 20; // Safety limit to prevent infinite loops
     const archivedParam = data?.includeArchived ? '&include_archived=true' : '';
-    // Explicit rather than relying on Pinterest's documented "no privacy
-    // param = all privacy levels" default — this guarantees secret/private
-    // boards are always included (e.g. as Pin Move's archive-board target),
-    // regardless of any future change to that default.
-    const privacyParam = '&privacy=ALL';
+    // Defaults to ALL rather than relying on Pinterest's documented "no
+    // privacy param = all privacy levels" default — this guarantees
+    // secret/private boards are always included by default, regardless of
+    // any future change to that default. Callers that want a narrower set
+    // (e.g. Pin Move only offering secret boards as archive targets, so a
+    // public board can never be picked by mistake) pass an explicit value.
+    const privacyParam = `&privacy=${data?.privacy || 'ALL'}`;
 
     try {
       // Uses this.fetch (not raw fetch()) so board listing shares the same

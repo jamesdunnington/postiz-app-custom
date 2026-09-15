@@ -142,7 +142,10 @@ export const PinterestMoveComponent = () => {
         body: JSON.stringify({
           name: 'boards',
           id: selectedIntegrationId,
-          data: {},
+          // Only secret boards are valid archive targets — showing public
+          // ones would let a pin get "moved" onto a board that's just as
+          // visible as where it started, defeating the point.
+          data: { privacy: 'SECRET' },
         }),
       });
       return response.json();
