@@ -99,6 +99,7 @@ export class IntegrationsController {
             id: p.id,
             internalId: p.internalId,
             disabled: p.disabled,
+            postPaused: p.postPaused,
             editor: findIntegration.editor,
             picture: p.picture || '/no-picture.jpg',
             identifier: p.providerIdentifier,
