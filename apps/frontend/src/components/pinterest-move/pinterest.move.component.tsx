@@ -130,7 +130,11 @@ export const PinterestMoveComponent = () => {
     setSelectedBoardId('');
   }, [selectedIntegrationId]);
 
-  const { data: boardsData } = useSWR<PinterestBoardOption[]>(
+  const {
+    data: boardsData,
+    mutate: mutateBoards,
+    isValidating: refreshingBoards,
+  } = useSWR<PinterestBoardOption[]>(
     selectedIntegrationId ? `pinterest-move-boards-${selectedIntegrationId}` : null,
     async () => {
       const response = await fetch('/integrations/function', {
@@ -471,23 +475,32 @@ export const PinterestMoveComponent = () => {
 
         {selectedIntegrationId && (
           <>
-            <div className="max-w-[320px]">
-              <Select
-                label="Target board"
-                name="targetBoard"
-                disableForm={true}
-                value={selectedBoardId}
-                onChange={(e) => setSelectedBoardId(e.target.value)}
-              >
-                <option value="">
-                  {boardsData ? 'Select a board…' : 'Loading boards…'}
-                </option>
-                {(boardsData || []).map((board) => (
-                  <option key={board.id} value={board.id}>
-                    {board.name}
+            <div className="max-w-[320px] flex items-end gap-2">
+              <div className="flex-1">
+                <Select
+                  label="Target board"
+                  name="targetBoard"
+                  disableForm={true}
+                  value={selectedBoardId}
+                  onChange={(e) => setSelectedBoardId(e.target.value)}
+                >
+                  <option value="">
+                    {boardsData ? 'Select a board…' : 'Loading boards…'}
                   </option>
-                ))}
-              </Select>
+                  {(boardsData || []).map((board) => (
+                    <option key={board.id} value={board.id}>
+                      {board.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <Button
+                disabled={!selectedIntegrationId || refreshingBoards}
+                loading={refreshingBoards}
+                onClick={() => mutateBoards()}
+              >
+                Refresh boards
+              </Button>
             </div>
 
             <div className="max-w-[220px]">
