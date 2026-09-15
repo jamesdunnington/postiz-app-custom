@@ -166,6 +166,11 @@ export class PinterestProvider
     let pageCount = 0;
     const maxPages = 20; // Safety limit to prevent infinite loops
     const archivedParam = data?.includeArchived ? '&include_archived=true' : '';
+    // Explicit rather than relying on Pinterest's documented "no privacy
+    // param = all privacy levels" default — this guarantees secret/private
+    // boards are always included (e.g. as Pin Move's archive-board target),
+    // regardless of any future change to that default.
+    const privacyParam = '&privacy=ALL';
 
     try {
       // Uses this.fetch (not raw fetch()) so board listing shares the same
@@ -176,8 +181,8 @@ export class PinterestProvider
       // 429'd mid-pagination and silently truncate the result.
       while (hasMore && pageCount < maxPages) {
         const url = bookmark
-          ? `https://api.pinterest.com/v5/boards?page_size=250&bookmark=${bookmark}${archivedParam}`
-          : `https://api.pinterest.com/v5/boards?page_size=250${archivedParam}`;
+          ? `https://api.pinterest.com/v5/boards?page_size=250&bookmark=${bookmark}${archivedParam}${privacyParam}`
+          : `https://api.pinterest.com/v5/boards?page_size=250${archivedParam}${privacyParam}`;
 
         const fetchResponse = await this.fetch(url, {
           method: 'GET',

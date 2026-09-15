@@ -60,7 +60,7 @@ describe('PinterestProvider.boards', () => {
     await provider.boards('token');
 
     expect(fetchSpy).toHaveBeenCalledWith(
-      'https://api.pinterest.com/v5/boards?page_size=250',
+      'https://api.pinterest.com/v5/boards?page_size=250&privacy=ALL',
       expect.anything()
     );
     fetchSpy.mockRestore();
@@ -75,7 +75,7 @@ describe('PinterestProvider.boards', () => {
     await provider.boards('token', { includeArchived: true });
 
     expect(fetchSpy).toHaveBeenCalledWith(
-      'https://api.pinterest.com/v5/boards?page_size=250&include_archived=true',
+      'https://api.pinterest.com/v5/boards?page_size=250&include_archived=true&privacy=ALL',
       expect.anything()
     );
     fetchSpy.mockRestore();
