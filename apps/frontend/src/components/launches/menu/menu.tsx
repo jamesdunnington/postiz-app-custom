@@ -132,6 +132,40 @@ export const Menu: FC<{
     onChange(false);
   }, []);
 
+  const pausePosting = useCallback(async () => {
+    if (
+      !(await deleteDialog(
+        'Pause posting for this channel? Scheduled posts will not be sent until you resume.',
+        'Pause Posting'
+      ))
+    ) {
+      return;
+    }
+    await fetch(`/integrations/${id}/pause-posting`, {
+      method: 'POST',
+    });
+    toast.show('Posting Paused', 'success');
+    setShow(false);
+    onChange(false);
+  }, [id]);
+
+  const resumePosting = useCallback(async () => {
+    const res = await fetch(`/integrations/${id}/resume-posting`, {
+      method: 'POST',
+    });
+    const body = (await res.json()) as { postsRescheduled?: number };
+    toast.show(
+      body.postsRescheduled
+        ? `Posting Resumed — ${body.postsRescheduled} missed post${
+            body.postsRescheduled === 1 ? '' : 's'
+          } rescheduled`
+        : 'Posting Resumed',
+      'success'
+    );
+    setShow(false);
+    onChange(false);
+  }, [id]);
+
   const editTimeTable = useCallback(() => {
     const findIntegration = integrations.find(
       (integration) => integration.id === id
@@ -581,6 +615,42 @@ export const Menu: FC<{
               </div>
               <div className="text-[14px]">
                 {t('enable_channel', 'Enable Channel')}
+              </div>
+            </div>
+          )}
+
+          {canDisable && !findIntegration?.refreshNeeded && (
+            <div
+              className="flex gap-[12px] items-center py-[8px] px-[10px]"
+              onClick={
+                findIntegration?.postPaused ? resumePosting : pausePosting
+              }
+            >
+              <div>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                >
+                  {findIntegration?.postPaused ? (
+                    <path
+                      d="M8 5v14l11-7z"
+                      fill="currentColor"
+                    />
+                  ) : (
+                    <path
+                      d="M6 5h4v14H6zM14 5h4v14h-4z"
+                      fill="currentColor"
+                    />
+                  )}
+                </svg>
+              </div>
+              <div className="text-[14px]">
+                {findIntegration?.postPaused
+                  ? t('resume_posting', 'Resume Posting')
+                  : t('pause_posting', 'Pause Posting')}
               </div>
             </div>
           )}

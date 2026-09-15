@@ -355,9 +355,9 @@ export class PostsService {
 
     if (firstPost.integration?.disabled) {
       console.log(`[PostsService] ⚠️ Post ${id} - integration is disabled`);
-      logger.warn('Integration is disabled', { 
-        postId: id, 
-        integration: firstPost.integration?.providerIdentifier 
+      logger.warn('Integration is disabled', {
+        postId: id,
+        integration: firstPost.integration?.providerIdentifier
       });
       await this._notificationService.inAppNotification(
         firstPost.organizationId,
@@ -365,6 +365,15 @@ export class PostsService {
         `We couldn't post to ${firstPost.integration?.providerIdentifier} for ${firstPost?.integration?.name} because it's disabled. Please enable it and try again.`,
         true
       );
+      return;
+    }
+
+    if (firstPost.integration?.postPaused) {
+      console.log(`[PostsService] ⏸️ Post ${id} - posting is paused for this integration`);
+      logger.warn('Posting is paused for this integration', {
+        postId: id,
+        integration: firstPost.integration?.providerIdentifier,
+      });
       return;
     }
 
@@ -1247,6 +1256,44 @@ export class PostsService {
 
   async getPublishingState() {
     return { paused: await this._publishingState.isPaused() };
+  }
+
+  async pauseIntegrationPosting(org: string, integrationId: string) {
+    const integration = await this._integrationService.getIntegrationById(
+      org,
+      integrationId
+    );
+    if (!integration) {
+      throw new Error('Integration not found');
+    }
+
+    await this._integrationService.pausePosting(org, integrationId);
+    return { paused: true };
+  }
+
+  async resumeIntegrationPosting(org: string, integrationId: string) {
+    const integration = await this._integrationService.getIntegrationById(
+      org,
+      integrationId
+    );
+    if (!integration) {
+      throw new Error('Integration not found');
+    }
+
+    await this._integrationService.resumePosting(org, integrationId);
+
+    // Re-fetch so rescheduleMissedPosts sees postPaused: false
+    const resumedIntegration = await this._integrationService.getIntegrationById(
+      org,
+      integrationId
+    );
+    const { rescheduled } = await this.rescheduleMissedPosts(
+      integrationId,
+      resumedIntegration as Integration,
+      true
+    );
+
+    return { resumed: true, postsRescheduled: rescheduled };
   }
 
   async pauseAllPublishing() {

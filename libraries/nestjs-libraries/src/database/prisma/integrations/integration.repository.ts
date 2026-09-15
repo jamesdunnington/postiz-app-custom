@@ -523,6 +523,30 @@ export class IntegrationRepository {
     });
   }
 
+  async pausePosting(org: string, id: string) {
+    await this._integration.model.integration.update({
+      where: {
+        id,
+        organizationId: org,
+      },
+      data: {
+        postPaused: true,
+      },
+    });
+  }
+
+  async resumePosting(org: string, id: string) {
+    await this._integration.model.integration.update({
+      where: {
+        id,
+        organizationId: org,
+      },
+      data: {
+        postPaused: false,
+      },
+    });
+  }
+
   getPostsForChannel(org: string, id: string) {
     return this._posts.model.post.groupBy({
       by: ['group'],

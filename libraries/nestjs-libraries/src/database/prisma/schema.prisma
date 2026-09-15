@@ -319,6 +319,7 @@ model Integration {
   type                  String
   token                 String
   disabled              Boolean                @default(false)
+  postPaused            Boolean                @default(false)
   tokenExpiration       DateTime?
   refreshToken          String?
   posts                 Post[]

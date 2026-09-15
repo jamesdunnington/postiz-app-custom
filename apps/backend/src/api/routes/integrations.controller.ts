@@ -579,6 +579,22 @@ export class IntegrationsController {
     );
   }
 
+  @Post('/:id/pause-posting')
+  pausePosting(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string
+  ) {
+    return this._postService.pauseIntegrationPosting(org.id, id);
+  }
+
+  @Post('/:id/resume-posting')
+  resumePosting(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string
+  ) {
+    return this._postService.resumeIntegrationPosting(org.id, id);
+  }
+
   @Delete('/')
   async deleteChannel(
     @GetOrgFromRequest() org: Organization,
