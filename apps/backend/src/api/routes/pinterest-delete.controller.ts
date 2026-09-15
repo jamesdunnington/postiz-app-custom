@@ -5,6 +5,7 @@ import { GetUserFromRequest } from '@gitroom/nestjs-libraries/user/user.from.req
 import { PinterestDeleteService } from '@gitroom/nestjs-libraries/database/prisma/pinterest-delete/pinterest-delete.service';
 import { PinterestDeleteBatchDto } from '@gitroom/nestjs-libraries/dtos/pinterest-delete/pinterest.delete.batch.dto';
 import { PinterestDeleteCancelDto } from '@gitroom/nestjs-libraries/dtos/pinterest-delete/pinterest.delete.cancel.dto';
+import { PinterestDeletePaceDto } from '@gitroom/nestjs-libraries/dtos/pinterest-delete/pinterest.delete.pace.dto';
 
 @Controller('/pinterest-delete')
 export class PinterestDeleteController {
@@ -28,6 +29,30 @@ export class PinterestDeleteController {
   @Get('/queue')
   getQueue(@Query('integrationId') integrationId: string) {
     return this._pinterestDeleteService.listQueueSummary(integrationId);
+  }
+
+  @Get('/pace')
+  getPace(
+    @GetOrgFromRequest() org: Organization,
+    @Query('integrationId') integrationId: string
+  ) {
+    return this._pinterestDeleteService.getPacingSettings(org.id, integrationId);
+  }
+
+  @Post('/pace')
+  updatePace(
+    @GetOrgFromRequest() org: Organization,
+    @Body() body: PinterestDeletePaceDto
+  ) {
+    return this._pinterestDeleteService.updatePacingSettings(
+      org.id,
+      body.integrationId,
+      {
+        minMinutes: body.minMinutes,
+        maxMinutes: body.maxMinutes,
+        batchSize: body.batchSize,
+      }
+    );
   }
 
   @Post('/cancel')

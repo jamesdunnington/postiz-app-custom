@@ -14,6 +14,12 @@ import { BullMqClient } from '@gitroom/nestjs-libraries/bull-mq-transport-new/cl
 // size limit; you can submit again to append more).
 const MAX_PINS_PER_BATCH = 200;
 
+// Sane guardrails so a per-integration override can't accidentally recreate
+// the exact burst behavior this pacing exists to avoid.
+const MIN_ALLOWED_MINUTES = 5;
+const MAX_ALLOWED_MINUTES = 1440; // 24h
+const MAX_ALLOWED_BATCH_SIZE = 10;
+
 @Injectable()
 export class PinterestDeleteService {
   constructor(
@@ -198,6 +204,42 @@ export class PinterestDeleteService {
 
   listQueueSummary(integrationId: string) {
     return this._repository.getQueueSummary(integrationId);
+  }
+
+  getPacingSettings(organizationId: string, integrationId: string) {
+    return this._repository.getPacingSettings(organizationId, integrationId);
+  }
+
+  // Only affects slots computed for pins submitted after this call — the
+  // repository chains new slots off pinDeleteNextSlot without touching any
+  // item that already has a scheduledFor, so already-queued pins keep
+  // running on the pace they were submitted under.
+  async updatePacingSettings(
+    organizationId: string,
+    integrationId: string,
+    pace: { minMinutes: number; maxMinutes: number; batchSize: number }
+  ) {
+    if (
+      pace.minMinutes < MIN_ALLOWED_MINUTES ||
+      pace.maxMinutes > MAX_ALLOWED_MINUTES ||
+      pace.minMinutes > pace.maxMinutes
+    ) {
+      throw new Error(
+        `Interval must be between ${MIN_ALLOWED_MINUTES} and ${MAX_ALLOWED_MINUTES} minutes, with min <= max`
+      );
+    }
+    if (pace.batchSize < 1 || pace.batchSize > MAX_ALLOWED_BATCH_SIZE) {
+      throw new Error(
+        `Pins per interval must be between 1 and ${MAX_ALLOWED_BATCH_SIZE}`
+      );
+    }
+
+    await this._repository.updatePacingSettings(
+      organizationId,
+      integrationId,
+      pace
+    );
+    return this.getPacingSettings(organizationId, integrationId);
   }
 
   // Cancels queued (PENDING) items by id, removing them from the DB and

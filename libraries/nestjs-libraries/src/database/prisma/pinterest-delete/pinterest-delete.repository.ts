@@ -5,8 +5,12 @@ import {
 } from '@gitroom/nestjs-libraries/database/prisma/prisma.service';
 import { computeChainedSlots } from '@gitroom/nestjs-libraries/database/prisma/pinterest-delete/pinterest-delete-scheduling.logic';
 
+// Fallbacks only — every Integration row carries its own pace via
+// pinDeletePaceMin/MaxMinutes + pinDeletePaceBatchSize (defaulted to these
+// same values in the schema), editable per account instead of blanket.
 const PIN_DELETE_MIN_MINUTES = 50;
 const PIN_DELETE_MAX_MINUTES = 60;
+const PIN_DELETE_BATCH_SIZE = 1;
 
 export interface PinterestDeleteQueueSummary {
   queued: number;
@@ -34,6 +38,7 @@ export class PinterestDeleteRepository {
   constructor(
     private _batch: PrismaRepository<'pinterestDeleteBatch'>,
     private _item: PrismaRepository<'pinterestDeleteItem'>,
+    private _integration: PrismaRepository<'integration'>,
     private _transaction: PrismaTransaction
   ) {}
 
@@ -51,14 +56,22 @@ export class PinterestDeleteRepository {
     return this._transaction.model.$transaction(async (tx) => {
       const integration = await tx.integration.findUniqueOrThrow({
         where: { id: integrationId },
-        select: { pinDeleteNextSlot: true },
+        select: {
+          pinDeleteNextSlot: true,
+          pinDeletePaceMinMinutes: true,
+          pinDeletePaceMaxMinutes: true,
+          pinDeletePaceBatchSize: true,
+        },
       });
 
       const slots = computeChainedSlots(
         integration.pinDeleteNextSlot,
         parsedPins.length,
-        PIN_DELETE_MIN_MINUTES,
-        PIN_DELETE_MAX_MINUTES
+        integration.pinDeletePaceMinMinutes ?? PIN_DELETE_MIN_MINUTES,
+        integration.pinDeletePaceMaxMinutes ?? PIN_DELETE_MAX_MINUTES,
+        new Date(),
+        Math.random,
+        integration.pinDeletePaceBatchSize ?? PIN_DELETE_BATCH_SIZE
       );
 
       const batch = await tx.pinterestDeleteBatch.create({
@@ -128,14 +141,22 @@ export class PinterestDeleteRepository {
     return this._transaction.model.$transaction(async (tx) => {
       const integration = await tx.integration.findUniqueOrThrow({
         where: { id: integrationId },
-        select: { pinDeleteNextSlot: true },
+        select: {
+          pinDeleteNextSlot: true,
+          pinDeletePaceMinMinutes: true,
+          pinDeletePaceMaxMinutes: true,
+          pinDeletePaceBatchSize: true,
+        },
       });
 
       const slots = computeChainedSlots(
         integration.pinDeleteNextSlot,
         itemIdsOldestFirst.length,
-        PIN_DELETE_MIN_MINUTES,
-        PIN_DELETE_MAX_MINUTES
+        integration.pinDeletePaceMinMinutes ?? PIN_DELETE_MIN_MINUTES,
+        integration.pinDeletePaceMaxMinutes ?? PIN_DELETE_MAX_MINUTES,
+        new Date(),
+        Math.random,
+        integration.pinDeletePaceBatchSize ?? PIN_DELETE_BATCH_SIZE
       );
 
       const updated = [];
@@ -248,5 +269,39 @@ export class PinterestDeleteRepository {
       where: { items: { none: {} } },
     });
     return result.count;
+  }
+
+  // Scoped to the org so one org can't read/change another's pacing via a
+  // guessed integration id.
+  getPacingSettings(organizationId: string, integrationId: string) {
+    return this._integration.model.integration.findFirstOrThrow({
+      where: { id: integrationId, organizationId },
+      select: {
+        pinDeletePaceMinMinutes: true,
+        pinDeletePaceMaxMinutes: true,
+        pinDeletePaceBatchSize: true,
+      },
+    });
+  }
+
+  // Only changes the pointer used for slots computed from here on —
+  // already-scheduled PENDING items keep whatever scheduledFor they were
+  // given at submission time, deliberately untouched.
+  async updatePacingSettings(
+    organizationId: string,
+    integrationId: string,
+    pace: { minMinutes: number; maxMinutes: number; batchSize: number }
+  ) {
+    const { count } = await this._integration.model.integration.updateMany({
+      where: { id: integrationId, organizationId },
+      data: {
+        pinDeletePaceMinMinutes: pace.minMinutes,
+        pinDeletePaceMaxMinutes: pace.maxMinutes,
+        pinDeletePaceBatchSize: pace.batchSize,
+      },
+    });
+    if (count === 0) {
+      throw new Error('Integration not found');
+    }
   }
 }

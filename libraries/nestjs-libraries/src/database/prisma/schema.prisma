@@ -340,6 +340,9 @@ model Integration {
   additionalSettings    String?                @default("[]")
   webhooks              IntegrationsWebhooks[]
   pinDeleteNextSlot        DateTime?
+  pinDeletePaceMinMinutes  Int                         @default(50)
+  pinDeletePaceMaxMinutes  Int                         @default(60)
+  pinDeletePaceBatchSize   Int                         @default(1)
   boardDeleteNextSlot      DateTime?
   pinDeleteBatches         PinterestDeleteBatch[]
   pinDeleteItems           PinterestDeleteItem[]

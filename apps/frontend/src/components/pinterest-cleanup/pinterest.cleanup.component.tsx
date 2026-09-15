@@ -49,6 +49,12 @@ interface PinterestDeleteQueueSummary {
   lastCompletionAt: string | null;
 }
 
+interface PinterestDeletePace {
+  pinDeletePaceMinMinutes: number;
+  pinDeletePaceMaxMinutes: number;
+  pinDeletePaceBatchSize: number;
+}
+
 // Hard ceiling enforced by the backend too (see MAX_PINS_PER_BATCH in
 // pinterest-delete.service.ts) — a sane cap on one form submission. Multiple
 // submissions append to the same ongoing per-account queue.
@@ -67,6 +73,10 @@ export const PinterestCleanupComponent = () => {
     new Set()
   );
   const [cancelling, setCancelling] = useState(false);
+  const [minMinutesInput, setMinMinutesInput] = useState('');
+  const [maxMinutesInput, setMaxMinutesInput] = useState('');
+  const [batchSizeInput, setBatchSizeInput] = useState('');
+  const [savingPace, setSavingPace] = useState(false);
 
   const maxPins = useMemo(() => {
     const parsed = parseInt(maxPinsInput, 10);
@@ -114,6 +124,67 @@ export const PinterestCleanupComponent = () => {
       ).json(),
     { refreshInterval: 7000 }
   );
+
+  const { data: paceData, mutate: mutatePace } = useSWR<PinterestDeletePace>(
+    selectedIntegrationId
+      ? `pinterest-delete-pace-${selectedIntegrationId}`
+      : null,
+    async () =>
+      (
+        await fetch(`/pinterest-delete/pace?integrationId=${selectedIntegrationId}`)
+      ).json()
+  );
+
+  // Reset the editable fields to whatever's saved whenever the account
+  // changes or a fresh save comes back — never while the user is mid-edit.
+  useEffect(() => {
+    if (!paceData) return;
+    setMinMinutesInput(String(paceData.pinDeletePaceMinMinutes));
+    setMaxMinutesInput(String(paceData.pinDeletePaceMaxMinutes));
+    setBatchSizeInput(String(paceData.pinDeletePaceBatchSize));
+  }, [paceData]);
+
+  const onSavePace = useCallback(async () => {
+    const minMinutes = parseInt(minMinutesInput, 10);
+    const maxMinutes = parseInt(maxMinutesInput, 10);
+    const batchSize = parseInt(batchSizeInput, 10);
+
+    if (!Number.isFinite(minMinutes) || !Number.isFinite(maxMinutes) || !Number.isFinite(batchSize)) {
+      toaster.show('Enter valid numbers', 'warning');
+      return;
+    }
+    if (minMinutes > maxMinutes) {
+      toaster.show('Min minutes must not be greater than max minutes', 'warning');
+      return;
+    }
+
+    setSavingPace(true);
+    try {
+      const response = await fetch('/pinterest-delete/pace', {
+        method: 'POST',
+        body: JSON.stringify({
+          integrationId: selectedIntegrationId,
+          minMinutes,
+          maxMinutes,
+          batchSize,
+        }),
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}) as any);
+        toaster.show(body.message || 'Failed to save', 'warning');
+        return;
+      }
+
+      toaster.show(
+        'Pacing saved — applies to pins submitted from now on, already-queued pins are unaffected',
+        'success'
+      );
+      mutatePace();
+    } finally {
+      setSavingPace(false);
+    }
+  }, [minMinutesInput, maxMinutesInput, batchSizeInput, selectedIntegrationId, fetch, toaster, mutatePace]);
 
   // Drop any selected id that no longer exists in the queue (cancelled
   // elsewhere, or already drained) so "Cancel selected" never resubmits a
@@ -397,6 +468,66 @@ export const PinterestCleanupComponent = () => {
             </div>
 
             <div className="flex flex-col gap-2">
+              <div className="text-lg font-semibold">Deletion pacing</div>
+              <div className="border border-newTableBorder bg-sixth rounded p-3 flex flex-col gap-3">
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="max-w-[140px]">
+                    <Input
+                      label="Min minutes"
+                      name="minMinutes"
+                      type="number"
+                      disableForm={true}
+                      removeError={true}
+                      min={1}
+                      max={1440}
+                      value={minMinutesInput}
+                      onChange={(e) => setMinMinutesInput(e.target.value)}
+                    />
+                  </div>
+                  <div className="max-w-[140px]">
+                    <Input
+                      label="Max minutes"
+                      name="maxMinutes"
+                      type="number"
+                      disableForm={true}
+                      removeError={true}
+                      min={1}
+                      max={1440}
+                      value={maxMinutesInput}
+                      onChange={(e) => setMaxMinutesInput(e.target.value)}
+                    />
+                  </div>
+                  <div className="max-w-[140px]">
+                    <Input
+                      label="Pins per interval"
+                      name="batchSize"
+                      type="number"
+                      disableForm={true}
+                      removeError={true}
+                      min={1}
+                      max={10}
+                      value={batchSizeInput}
+                      onChange={(e) => setBatchSizeInput(e.target.value)}
+                    />
+                  </div>
+                  <Button loading={savingPace} onClick={onSavePace}>
+                    Save pacing
+                  </Button>
+                </div>
+                <div className="text-[12px] text-customColor18">
+                  {batchSizeInput && batchSizeInput !== '1'
+                    ? `Pinterest deletes ${batchSizeInput} pin(s) together every ${minMinutesInput}-${maxMinutesInput} minutes (randomized)`
+                    : `Pins are deleted one at a time, every ${minMinutesInput || '50'}-${maxMinutesInput || '60'} minutes (randomized)`}
+                  {' '}— this keeps deletions from looking spammy to Pinterest.
+                  Only applies to pins submitted after you save; anything
+                  already queued keeps its current schedule. Older, more
+                  established accounts can usually tolerate a faster pace
+                  than newer ones.
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
               <div className="text-lg font-semibold">Queue status</div>
               <div className="border border-newTableBorder bg-sixth rounded p-3 flex flex-col gap-1">
                 <div>
@@ -413,12 +544,6 @@ export const PinterestCleanupComponent = () => {
                   {queueData?.lastCompletionAt
                     ? new Date(queueData.lastCompletionAt).toLocaleString()
                     : '—'}
-                </div>
-                <div className="text-[12px] text-customColor18">
-                  Pins are deleted one at a time, every 50-60 minutes
-                  (randomized) — this keeps deletions from looking spammy to
-                  Pinterest. Submitting more pins adds them to this same
-                  ongoing queue.
                 </div>
               </div>
 

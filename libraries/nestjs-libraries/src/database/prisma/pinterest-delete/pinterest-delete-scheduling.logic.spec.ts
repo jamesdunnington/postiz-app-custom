@@ -50,4 +50,23 @@ describe('computeChainedSlots', () => {
     expect(slots).toHaveLength(1);
     expect(slots[0].getTime()).toBeGreaterThan(Date.now());
   });
+
+  it('groups batchSize consecutive items onto the same slot', () => {
+    const slots = computeChainedSlots(null, 5, 50, 60, now, () => 0, 2);
+
+    expect(slots[0].getTime()).toBe(slots[1].getTime());
+    expect(slots[2].getTime()).toBe(slots[3].getTime());
+    expect(slots[4].getTime()).toBeGreaterThan(slots[3].getTime());
+    expect(slots[0].getTime() - now.getTime()).toBe(50 * 60_000);
+    expect(slots[2].getTime() - now.getTime()).toBe(100 * 60_000);
+  });
+
+  it('treats batchSize < 1 as 1 (never groups zero or negative items)', () => {
+    const oneAtATime = computeChainedSlots(null, 3, 50, 60, now, () => 0);
+    const zeroBatchSize = computeChainedSlots(null, 3, 50, 60, now, () => 0, 0);
+
+    expect(zeroBatchSize.map((s) => s.getTime())).toEqual(
+      oneAtATime.map((s) => s.getTime())
+    );
+  });
 });
