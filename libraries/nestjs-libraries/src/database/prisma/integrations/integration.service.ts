@@ -275,6 +275,14 @@ export class IntegrationService {
     return this._integrationRepository.disableChannel(org, id);
   }
 
+  async pausePosting(org: string, id: string) {
+    return this._integrationRepository.pausePosting(org, id);
+  }
+
+  async resumePosting(org: string, id: string) {
+    return this._integrationRepository.resumePosting(org, id);
+  }
+
   async enableChannel(org: string, totalChannels: number, id: string) {
     const integrations = (
       await this._integrationRepository.getIntegrationsList(org)
@@ -1026,6 +1034,16 @@ export class IntegrationService {
   ) {
     const { logger } = Sentry;
     try {
+      // Posting is deliberately paused for this integration — leave its
+      // missed posts alone until the user explicitly resumes it, rather
+      // than letting a server restart or reconnect flow silently un-stick them.
+      if (integration.postPaused) {
+        logger.info(
+          logger.fmt`Skipping missed-post reschedule for paused integration ${integrationId}`
+        );
+        return { rescheduled: 0 };
+      }
+
       // Get user timezone from integration's organization
       const integrationWithOrg = await this._integrationRepository.getIntegrationByIdOnly(
         integrationId

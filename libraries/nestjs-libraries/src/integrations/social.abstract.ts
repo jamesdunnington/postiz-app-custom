@@ -95,15 +95,20 @@ export abstract class SocialAbstract {
       return request;
     }
 
-    if (totalRetries > 2) {
-      throw new BadBody(identifier, '{}', options.body || '{}');
-    }
-
     let json = '{}';
     try {
       json = await request.text();
     } catch (err) {
       json = '{}';
+    }
+
+    if (totalRetries > 2) {
+      throw new BadBody(
+        identifier,
+        json,
+        options.body || '{}',
+        `Gave up after ${totalRetries} retries, last status ${request.status}`
+      );
     }
 
     if (
