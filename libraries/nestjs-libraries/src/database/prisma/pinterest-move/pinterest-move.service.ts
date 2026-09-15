@@ -7,7 +7,7 @@ import { parsePinInput } from '@gitroom/nestjs-libraries/database/prisma/pintere
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import { BullMqClient } from '@gitroom/nestjs-libraries/bull-mq-transport-new/client';
-import { BadBody } from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import { BadBody, RefreshToken } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 
 // Sane upper bound on a single form submission (the queue itself has no
 // total size limit; you can submit again to append more to the same
@@ -140,13 +140,15 @@ export class PinterestMoveService {
       await this._repository.markItemMoved(itemId);
     } catch (err) {
       // this.fetch (in SocialAbstract) throws a plain BadBody object — not
-      // an Error subclass — on any non-2xx response, carrying Pinterest's
-      // raw response body in `.json`. Without this check that body is
-      // silently discarded and every failure (wrong board, rate limit,
-      // beta-gated endpoint, anything) shows up as the same unhelpful
-      // "Unknown error", which defeats the point of a Failed-pins list.
+      // an Error subclass — on most non-2xx responses, and a separate plain
+      // RefreshToken object specifically for 401s, carrying Pinterest's raw
+      // response body in `.json` either way. Without checking both, that
+      // body is silently discarded and every failure (wrong board, rate
+      // limit, a restricted-feature rejection, anything) shows up as the
+      // same unhelpful "Unknown error", which defeats the point of a
+      // Failed-pins list.
       const errorMessage =
-        err instanceof BadBody
+        err instanceof BadBody || err instanceof RefreshToken
           ? err.json || err.message || 'Unknown error'
           : err instanceof Error
           ? err.message
