@@ -273,6 +273,11 @@ export const MenuComponent: FC<
         'data-tooltip-id': 'tooltip',
         'data-tooltip-content': 'Channel disconnected, click to reconnect.',
       })}
+      {...(!integration.refreshNeeded &&
+        integration.postPaused && {
+          'data-tooltip-id': 'tooltip',
+          'data-tooltip-content': 'Posting is paused for this channel.',
+        })}
       {...(collapsed
         ? {
             'data-tooltip-id': 'tooltip',
@@ -289,7 +294,7 @@ export const MenuComponent: FC<
       <div
         className={clsx(
           'relative gap-[6px] flex justify-center items-center',
-          integration.disabled && 'opacity-50'
+          (integration.disabled || integration.postPaused) && 'opacity-50'
         )}
       >
         <div className="h-full w-[4px] -ms-[12px] rounded-s-[3px] opacity-0 group-hover/profile:opacity-100 transition-opacity">
@@ -348,7 +353,7 @@ export const MenuComponent: FC<
         role="Handle"
         className={clsx(
           'group-[.sidebar]:hidden flex-1 whitespace-nowrap text-ellipsis overflow-hidden cursor-move',
-          integration.disabled && 'opacity-50'
+          (integration.disabled || integration.postPaused) && 'opacity-50'
         )}
       >
         {integration.name}
