@@ -36,7 +36,6 @@ import { ThirdPartyController } from '@gitroom/backend/api/routes/third-party.co
 import { MonitorController } from '@gitroom/backend/api/routes/monitor.controller';
 import { PublishingController } from '@gitroom/backend/api/routes/publishing.controller';
 import { PinterestBoardsController } from '@gitroom/backend/api/routes/pinterest-boards.controller';
-import { PinterestMoveController } from '@gitroom/backend/api/routes/pinterest-move.controller';
 import { BatchScheduleController } from '@gitroom/backend/api/routes/batch-schedule.controller';
 
 const authenticatedController = [
@@ -59,7 +58,6 @@ const authenticatedController = [
   ThirdPartyController,
   PublishingController,
   PinterestBoardsController,
-  PinterestMoveController,
   BatchScheduleController,
 ];
 @Module({

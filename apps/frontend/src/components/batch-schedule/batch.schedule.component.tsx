@@ -57,7 +57,7 @@ interface BatchScheduleQueueSummary {
   queued: number;
   done: number;
   failed: { id: string; content: string; boardId: string; errorMessage: string | null }[];
-  totalEverSubmitted: number;
+  submittedCount: number;
   items: BatchScheduleQueueItem[];
 }
 
@@ -465,7 +465,7 @@ export const BatchScheduleComponent = () => {
               <div className="border border-newTableBorder bg-sixth rounded p-3">
                 Queued: {queueData?.queued ?? 0} · Scheduled:{' '}
                 {queueData?.done ?? 0} · Failed: {queueData?.failed.length ?? 0}{' '}
-                · Total submitted: {queueData?.totalEverSubmitted ?? 0}
+                · Total submitted (latest upload): {queueData?.submittedCount ?? 0}
               </div>
             </div>
 

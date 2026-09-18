@@ -11,7 +11,7 @@ export interface BatchScheduleQueueSummary {
     boardId: string;
     errorMessage: string | null;
   }[];
-  totalEverSubmitted: number;
+  submittedCount: number;
   items: {
     id: string;
     content: string;
@@ -103,19 +103,30 @@ export class BatchScheduleRepository {
   async getQueueSummary(
     integrationId: string
   ): Promise<BatchScheduleQueueSummary> {
-    const items = await this._item.model.batchScheduleItem.findMany({
+    // Only the most recently submitted batch is shown: a new upload
+    // replaces the previous one's displayed status/errors rather than
+    // accumulating history across every batch ever submitted.
+    const latestBatch = await this._batch.model.batchScheduleBatch.findFirst({
       where: { integrationId },
-      orderBy: { createdAt: 'asc' },
-      select: {
-        id: true,
-        content: true,
-        boardId: true,
-        status: true,
-        assignedPublishDate: true,
-        postizPostId: true,
-        errorMessage: true,
-      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
     });
+
+    const items = latestBatch
+      ? await this._item.model.batchScheduleItem.findMany({
+          where: { batchId: latestBatch.id },
+          orderBy: { createdAt: 'asc' },
+          select: {
+            id: true,
+            content: true,
+            boardId: true,
+            status: true,
+            assignedPublishDate: true,
+            postizPostId: true,
+            errorMessage: true,
+          },
+        })
+      : [];
 
     return {
       queued: items.filter((i) => i.status === 'PENDING').length,
@@ -128,7 +139,7 @@ export class BatchScheduleRepository {
           boardId,
           errorMessage,
         })),
-      totalEverSubmitted: items.length,
+      submittedCount: items.length,
       items,
     };
   }

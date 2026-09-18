@@ -472,32 +472,6 @@ export class PinterestProvider
     ];
   }
 
-  // Moves a pin to a different board via PATCH board_id. Pinterest's API has
-  // no way to delete or archive a pin/board safely at scale without hurting
-  // account traffic, so this — not deletion — is how pins get taken off a
-  // live board: the pin (and its saves/engagement) is preserved, just moved
-  // to a dedicated archive board instead of removed.
-  async movePin(
-    id: string,
-    accessToken: string,
-    pinId: string,
-    targetBoardId: string
-  ): Promise<{ success: boolean }> {
-    const response = await this.fetch(
-      `https://api.pinterest.com/v5/pins/${pinId}`,
-      {
-        method: 'PATCH',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ board_id: targetBoardId }),
-      }
-    );
-
-    return { success: response.status === 200 };
-  }
-
   async analytics(
     id: string,
     accessToken: string,
