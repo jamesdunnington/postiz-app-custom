@@ -4,14 +4,13 @@ import { DatabaseModule } from '@gitroom/nestjs-libraries/database/prisma/databa
 import { PostsController } from '@gitroom/workers/app/posts.controller';
 import { BullMqModule } from '@gitroom/nestjs-libraries/bull-mq-transport-new/bull.mq.module';
 import { PlugsController } from '@gitroom/workers/app/plugs.controller';
-import { PinterestMoveController } from '@gitroom/workers/app/pinterest-move.controller';
 import { BatchScheduleController } from '@gitroom/workers/app/batch-schedule.controller';
 import { SentryModule } from '@sentry/nestjs/setup';
 import { FILTER } from '@gitroom/nestjs-libraries/sentry/sentry.exception';
 
 @Module({
   imports: [SentryModule.forRoot(), DatabaseModule, BullMqModule],
-  controllers: [PostsController, PlugsController, PinterestMoveController, BatchScheduleController],
+  controllers: [PostsController, PlugsController, BatchScheduleController],
   providers: [FILTER],
 })
 export class AppModule {}

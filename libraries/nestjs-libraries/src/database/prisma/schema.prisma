@@ -42,7 +42,6 @@ model Organization {
   sets              Sets[]
   thirdParty        ThirdParty[]
   errors            Errors[]
-  pinMoveBatches        PinterestMoveBatch[]
   batchScheduleBatches  BatchScheduleBatch[]
 }
 
@@ -338,12 +337,6 @@ model Integration {
   rootInternalId        String?
   additionalSettings    String?                @default("[]")
   webhooks              IntegrationsWebhooks[]
-  pinMoveNextSlot          DateTime?
-  pinMovePaceMinMinutes    Int                         @default(50)
-  pinMovePaceMaxMinutes    Int                         @default(60)
-  pinMovePaceBatchSize     Int                         @default(1)
-  pinMoveBatches           PinterestMoveBatch[]
-  pinMoveItems             PinterestMoveItem[]
   batchScheduleBatches     BatchScheduleBatch[]
   batchScheduleItems       BatchScheduleItem[]
 
@@ -744,44 +737,6 @@ enum APPROVED_SUBMIT_FOR_ORDER {
   NO
   WAITING_CONFIRMATION
   YES
-}
-
-model PinterestMoveBatch {
-  id              String    @id @default(uuid())
-  organizationId  String
-  integrationId   String
-  createdByUserId String?
-  source          String // "MANUAL" | "API" | "MCP"
-  submittedCount  Int
-  createdAt       DateTime  @default(now())
-
-  organization Organization        @relation(fields: [organizationId], references: [id])
-  integration  Integration         @relation(fields: [integrationId], references: [id])
-  items        PinterestMoveItem[]
-
-  @@index([integrationId, createdAt])
-}
-
-model PinterestMoveItem {
-  id              String    @id @default(uuid())
-  batchId         String
-  integrationId   String
-  pinId           String
-  rawInput        String
-  targetBoardId   String
-  targetBoardName String // captured at queue time — the board may be renamed later
-  status          String // "PENDING" | "MOVED" | "FAILED"
-  scheduledFor    DateTime?
-  errorMessage    String?
-  processedAt     DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  batch       PinterestMoveBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  integration Integration        @relation(fields: [integrationId], references: [id])
-
-  @@index([integrationId, status])
-  @@index([status, scheduledFor])
 }
 
 model BatchScheduleBatch {

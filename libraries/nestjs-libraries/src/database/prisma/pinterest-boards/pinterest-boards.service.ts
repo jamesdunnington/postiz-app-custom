@@ -76,9 +76,6 @@ export class PinterestBoardsService {
     return results;
   }
 
-  // Mirrors PinterestMoveService.getValidAccessToken — kept local and
-  // duplicated deliberately rather than extracting a shared helper, to
-  // avoid an unrelated refactor of that already-working, unrelated code path.
   private async getValidAccessToken(integration: Integration): Promise<string> {
     const provider = this._integrationManager.getSocialIntegration('pinterest');
 

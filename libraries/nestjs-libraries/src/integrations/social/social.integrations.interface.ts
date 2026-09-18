@@ -84,12 +84,6 @@ export interface ISocialMediaIntegration {
     postDetails: PostDetails[],
     integration: Integration
   ): Promise<PostResponse[]>; // Schedules a new post
-  movePin?(
-    id: string,
-    accessToken: string,
-    pinId: string,
-    targetBoardId: string
-  ): Promise<{ success: boolean }>;
   createBoard?(
     id: string,
     accessToken: string,
