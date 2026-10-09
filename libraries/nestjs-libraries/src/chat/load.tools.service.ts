@@ -72,6 +72,12 @@ export class LoadToolsService {
         - Reschedule an existing post to a new date/time (integrationEditPostDateTool)
         - Edit the text/images of one part of an existing draft or scheduled post (integrationEditPostContentTool) — cannot edit a post that's already published
         - Delete/cancel an existing post (integrationDeletePostTool)
+        - See a channel's preset posting time slots (the postingTimes field of integrationList, HH:mm in the user's local time)
+        - Replace a channel's preset posting time slots (integrationSetPostingTimesTool)
+        - Find a channel's next free preset slots (integrationNextSlotsTool), to schedule posts into them
+
+      - integrationSetPostingTimesTool replaces the whole list: start from the channel's current postingTimes, apply the user's change, and confirm the final list with the user before calling it.
+      - When the user wants a post scheduled into the channel's preset slots, call integrationNextSlotsTool and pass each returned UTC "date" to integrationSchedulePostTool. Tell the user the localLabel times, not the UTC dates.
 
       - Before calling integrationEditPostDateTool, integrationEditPostContentTool, or integrationDeletePostTool, always use integrationListPostsTool first to find and confirm the exact post (show the user its date and content preview) — never guess an id.
       - integrationDeletePostTool is irreversible. Always get explicit confirmation from the user on which specific post before calling it, never assume.

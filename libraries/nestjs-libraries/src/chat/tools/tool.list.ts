@@ -14,6 +14,8 @@ import { IntegrationEditPostDateTool } from '@gitroom/nestjs-libraries/chat/tool
 import { IntegrationEditPostContentTool } from '@gitroom/nestjs-libraries/chat/tools/integration.edit.post.content.tool';
 import { IntegrationAnalyticsTool } from '@gitroom/nestjs-libraries/chat/tools/integration.analytics.tool';
 import { PinterestCreateBoardsTool } from '@gitroom/nestjs-libraries/chat/tools/pinterest.create.boards.tool';
+import { IntegrationSetPostingTimesTool } from '@gitroom/nestjs-libraries/chat/tools/integration.set.posting.times.tool';
+import { IntegrationNextSlotsTool } from '@gitroom/nestjs-libraries/chat/tools/integration.next.slots.tool';
 
 export const toolList = [
   IntegrationListTool,
@@ -32,4 +34,6 @@ export const toolList = [
   IntegrationEditPostContentTool,
   IntegrationAnalyticsTool,
   PinterestCreateBoardsTool,
+  IntegrationSetPostingTimesTool,
+  IntegrationNextSlotsTool,
 ];

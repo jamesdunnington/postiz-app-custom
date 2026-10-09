@@ -8,6 +8,7 @@ import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/in
 import z from 'zod';
 import { checkAuth } from '@gitroom/nestjs-libraries/chat/auth.context';
 import { getAuth } from '@gitroom/nestjs-libraries/chat/async.storage';
+import { toPostingTimeView } from '@gitroom/nestjs-libraries/chat/posting.times';
 
 @Injectable()
 export class IntegrationListTool implements AgentToolInterface {
@@ -25,6 +26,11 @@ export class IntegrationListTool implements AgentToolInterface {
             name: z.string(),
             picture: z.string(),
             platform: z.string(),
+            postingTimes: z
+              .array(z.object({ time: z.number(), label: z.string() }))
+              .describe(
+                "The channel's preset posting time slots, in the user's local time (label is HH:mm, time is minutes since local midnight)"
+              ),
           })
         ),
       }),
@@ -49,6 +55,7 @@ export class IntegrationListTool implements AgentToolInterface {
             platform: p.providerIdentifier,
             display: p.profile,
             type: p.type,
+            postingTimes: toPostingTimeView(p.postingTimes),
           })),
         };
       },

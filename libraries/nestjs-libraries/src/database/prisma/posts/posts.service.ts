@@ -16,6 +16,7 @@ import { MessagesService } from '@gitroom/nestjs-libraries/database/prisma/marke
 import { StripeService } from '@gitroom/nestjs-libraries/services/stripe.service';
 import { CreateGeneratedPostsDto } from '@gitroom/nestjs-libraries/dtos/generator/create.generated.posts.dto';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
+import { parsePostingTimes } from '@gitroom/nestjs-libraries/chat/posting.times';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import {
   BadBody,
@@ -1145,6 +1146,36 @@ export class PostsService {
         : '[Postiz] Your latest notifications',
       message
     );
+  }
+
+  // Next free preset time slots for one channel, as UTC dates. Slots are stored
+  // in the user's local time, so the stored offset is applied here and returned
+  // so callers can show which offset was used.
+  async getNextPresetSlots(orgId: string, integrationId: string, count: number) {
+    const integration = await this._integrationService.getIntegrationById(
+      orgId,
+      integrationId
+    );
+    if (!integration) {
+      return null;
+    }
+
+    const postingTimes = parsePostingTimes(integration.postingTimes);
+    const timezoneOffset = await this._integrationService.getUserTimezone(
+      integrationId
+    );
+    const slots = postingTimes.length
+      ? await this._postRepository.getNextAvailableSlots(
+          orgId,
+          integrationId,
+          count,
+          postingTimes,
+          false,
+          timezoneOffset
+        )
+      : [];
+
+    return { postingTimes, timezoneOffset, slots };
   }
 
   async rescheduleMissedPosts(
