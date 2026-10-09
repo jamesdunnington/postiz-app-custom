@@ -350,6 +350,12 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
             })
           );
 
+      // Colored text background only applies to text-only posts (no media, no link preview).
+      const backgroundPreset =
+        !uploadPhotos?.length && firstPost?.settings?.text_format_preset_id
+          ? firstPost.settings.text_format_preset_id
+          : undefined;
+
       const {
         id: postId,
         permalink_url,
@@ -364,7 +370,9 @@ export class FacebookProvider extends SocialAbstract implements SocialProvider {
             },
             body: JSON.stringify({
               ...(uploadPhotos?.length ? { attached_media: uploadPhotos } : {}),
-              ...(firstPost?.settings?.url
+              ...(backgroundPreset
+                ? { text_format_preset_id: backgroundPreset }
+                : firstPost?.settings?.url
                 ? { link: firstPost.settings.url }
                 : {}),
               message: firstPost.message,
