@@ -147,6 +147,18 @@ Initialize with `enableLogs: true` and optionally `consoleLoggingIntegration`.
 ### Adding a Social Integration
 Social platform integrations live under `libraries/nestjs-libraries/src/integrations/`. Each platform implements a shared interface for OAuth, posting, and analytics. Register the provider in the integrations module.
 
+## Production Server Config
+
+The `settings/` folder contains the live server configuration for the VPS deployment at `postiz.thecontentwarrior.work`:
+
+- `settings/docker-compose.yml` — full stack compose file (Postiz, n8n, Caddy, Keila, Pinterest scheduler, Daybook). Lives at `/root/n8n/docker-compose.yml` on the server.
+- `settings/Caddyfile` — Caddy reverse proxy config. Lives at `/root/n8n/Caddyfile` on the server.
+
+Key deployment notes:
+- Caddy proxies `postiz.thecontentwarrior.work` → nginx inside the postiz container on port 5000.
+- Nginx (inside the container) routes `/api/*` → backend (port 3000) and everything else → Next.js frontend (port 4200).
+- `BACKEND_INTERNAL_URL` must be `http://localhost:3000` (direct to backend, bypassing nginx) — not port 5000, which would cause Next.js server-side fetches to get HTML back instead of JSON.
+
 ## Docs
 
 - Main docs: https://docs.postiz.com/

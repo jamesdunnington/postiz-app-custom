@@ -1,0 +1,361 @@
+services:
+  # n8n stack
+  postgres:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: n8n
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: n8n
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  n8n:
+    image: n8nio/n8n
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: n8n
+      DB_POSTGRESDB_USER: n8n
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
+      N8N_HOST: ${N8N_HOST}
+      N8N_PORT: 5678
+      N8N_PROTOCOL: ${N8N_PROTOCOL}
+      N8N_BASIC_AUTH_ACTIVE: ${N8N_BASIC_AUTH_ACTIVE}
+      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      WEBHOOK_URL: ${WEBHOOK_URL}
+      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL}
+      NODE_ENV: production
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      NODE_EXTRA_CA_CERTS: /home/node/ca.pem  # <- This line fixes SSL issues in Alpine/Node.js
+      NODE_FUNCTION_ALLOW_EXTERNAL: cheerio
+      # Execution data pruning and optimization (added for efficiency)
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: "168"  # Prune executions older than 7 days
+      EXECUTIONS_DATA_PRUNE_MAX_COUNT: "10000"  # Max 10,000 executions (lowered to account for successes)
+      EXECUTIONS_DATA_HARD_DELETE_BUFFER: "1"  # Safety buffer in hours
+      EXECUTIONS_DATA_SAVE_ON_ERROR: all
+      EXECUTIONS_DATA_SAVE_ON_SUCCESS: all  # Now save successful executions too
+      EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS: "true"
+      EXECUTIONS_DATA_SAVE_ON_PROGRESS: "false"  # Disable progress data to save space
+      GENERIC_TIMEZONE: UTC  # Consistent timezone
+      N8N_LOG_LEVEL: info  # Balanced logging
+      # Fixes for deprecations and proxy trust
+      N8N_RUNNERS_ENABLED: "true"  # Enable task runners to avoid deprecation
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"  # Allow env access in code nodes if needed
+      N8N_GIT_NODE_DISABLE_BARE_REPOS: "true"  # Disable bare repos for security
+      N8N_PROXY_HOPS: "1"  # Trust 1 proxy (Caddy) to fix X-Forwarded-For error
+      N8N_ERROR_WORKFLOW: pgVMtHJsYSUwq9d8
+    volumes:
+      - ./n8n_config:/home/node/.n8n
+      - ./ca.pem:/home/node/ca.pem  # <-- Mounts CA bundle from host
+
+  #Caddyfile Stack
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - ./privacy:/srv/privacy
+    networks:
+      - postiz-network
+      - default
+
+  # Postiz stack
+  postiz:
+    # image: ghcr.io/gitroomhq/postiz-app
+    image: ghcr.io/jamesdunnington/postiz-app-custom:latest
+    container_name: postiz
+    restart: always
+    environment:
+      MAIN_URL: "https://postiz.thecontentwarrior.work"
+      FRONTEND_URL: "https://postiz.thecontentwarrior.work"
+      NEXT_PUBLIC_BACKEND_URL: "https://postiz.thecontentwarrior.work/api"
+      JWT_SECRET: "${POSTIZ_JWT_SECRET}"
+      DATABASE_URL: "postgresql://postiz-user:${POSTIZ_POSTGRES_PASSWORD}@postiz-postgres:5432/postiz-db-local"
+      REDIS_URL: "redis://postiz-redis:6379"
+      BACKEND_INTERNAL_URL: "http://localhost:3000"
+      IS_GENERAL: "true"
+      DISABLE_REGISTRATION: "true"
+      STORAGE_PROVIDER: "local"
+      UPLOAD_DIRECTORY: "/uploads"
+      NEXT_PUBLIC_UPLOAD_DIRECTORY: "/uploads"
+      PINTEREST_CLIENT_ID: "1534348"
+      PINTEREST_CLIENT_SECRET: "${PINTEREST_CLIENT_SECRET}"
+      API_LIMIT: "1000"
+    volumes:
+      - postiz-config:/config/
+      - postiz-uploads:/uploads/
+    ports:
+      - "5000:5000"
+    networks:
+      - postiz-network
+    depends_on:
+      postiz-postgres:
+        condition: service_healthy
+      postiz-redis:
+        condition: service_healthy
+
+  postiz-postgres:
+    image: postgres:17-alpine
+    container_name: postiz-postgres
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: ${POSTIZ_POSTGRES_PASSWORD}
+      POSTGRES_USER: postiz-user
+      POSTGRES_DB: postiz-db-local
+    volumes:
+      - postgres-volume:/var/lib/postgresql/data
+    networks:
+      - postiz-network
+    healthcheck:
+      test: pg_isready -U postiz-user -d postiz-db-local
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  postiz-redis:
+    image: redis:7.2
+    container_name: postiz-redis
+    restart: always
+    healthcheck:
+      test: redis-cli ping
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    volumes:
+      - postiz-redis-data:/data
+    networks:
+      - postiz-network
+
+  # Pinterest CSV Scheduler Database (separate from Postiz)
+  pinterest-postgres:
+    image: postgres:15
+    container_name: pinterest-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pinterest_scheduler
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${PINTEREST_DB_PASSWORD}
+    volumes:
+      - pinterest_postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - postiz-network
+
+  # ============================================================================
+  # PINTEREST CSV SCHEDULER SERVICES
+  # ============================================================================
+
+  # Pinterest Scheduler Backend API
+  scheduler-backend:
+    image: ghcr.io/${GITHUB_USERNAME}/pinterest-scheduler-vps/pinterest-scheduler-backend:latest
+    container_name: scheduler-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:${PINTEREST_DB_PASSWORD}@pinterest-postgres:5432/pinterest_scheduler
+      JWT_SECRET: ${SCHEDULER_JWT_SECRET}
+      BACKEND_PORT: 3001
+      CORS_ORIGIN: https://schedule.thecontentwarrior.work
+      POSTIZ_API_URL: https://postiz.thecontentwarrior.work/api/public/v1
+      POSTIZ_API_KEY: ${POSTIZ_API_KEY}
+    ports:
+      - "3001:3001"
+    depends_on:
+      pinterest-postgres:
+        condition: service_healthy
+    networks:
+      - postiz-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Pinterest Scheduler Frontend
+  scheduler-frontend:
+    image: ghcr.io/${GITHUB_USERNAME}/pinterest-scheduler-vps/pinterest-scheduler-frontend:latest
+    container_name: scheduler-frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: /api
+    ports:
+      - "3000:80"
+    depends_on:
+      - scheduler-backend
+    networks:
+      - postiz-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  #Keila Stack
+  keila-db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=keila
+      - POSTGRES_DB=keila
+      - POSTGRES_PASSWORD=${KEILA_DB_PASSWORD}
+    networks:
+      - postiz-network
+    volumes:
+      - keila_db_data:/var/lib/postgresql/data
+
+  keila:
+    #image: pentacent/keila:latest
+    image: ghcr.io/${GITHUB_USERNAME}/keila:latest
+    restart: always
+    depends_on:
+      - keila-db
+    environment:
+      # We provide both to satisfy the Elixir runtime check
+      - DATABASE_URL=ecto://keila:${KEILA_DB_PASSWORD}@keila-db/keila
+      - DB_URL=ecto://keila:${KEILA_DB_PASSWORD}@keila-db/keila
+      - SECRET_KEY_BASE=${KEILA_SECRET_KEY_BASE}
+      - URL_HOST=${KEILA_URL_HOST}
+      - URL_PORT=443
+      - URL_SCHEME=https
+      # Required System SMTP (Use your Hostinger details)
+      - MAILER_TYPE=smtp
+      - MAILER_SMTP_HOST=smtp.hostinger.com
+      - MAILER_SMTP_PORT=465
+      - MAILER_SMTP_USER=james@homedesigninsider.com
+      - MAILER_SMTP_PASSWORD=${KEILA_MAILER_SMTP_PASSWORD}
+      - MAILER_ENABLE_SSL=true
+      - MAILER_SMTP_FROM_NAME=James
+      - MAILER_SMTP_FROM_EMAIL=james@homedesigninsider.com
+      # Updated Admin Keys for v0.19.1
+      - KEILA_USER=james@homedesigninsider.com
+      - KEILA_PASSWORD=${KEILA_ADMIN_PASSWORD}
+      - DISABLE_REGISTRATION=true
+      - HASHID_SALT=${KEILA_HASHID_SALT}
+      - SMTP2GO_WEBHOOK_TOKEN=${SMTP2GO_WEBHOOK_TOKEN}
+    networks:
+      - postiz-network
+    expose:
+      - "4000"
+
+  keila-mcp:
+    image: ghcr.io/${GITHUB_USERNAME}/keila-mcp:latest
+    restart: always
+    depends_on:
+      - keila
+    environment:
+      KEILA_API_URL: "http://keila:4000"
+      MCP_TRANSPORT: "sse"
+      KEILA_PROJECT_hdi: "${KEILA_PROJECT_hdi}"
+      KEILA_PROJECT_cb: "${KEILA_PROJECT_cb}"
+      KEILA_PROJECT_cni: "${KEILA_PROJECT_cni}"
+      KEILA_PROJECT_cod: "${KEILA_PROJECT_cod}"
+      KEILA_PROJECT_ip: "${KEILA_PROJECT_ip}"
+      KEILA_PROJECT_wwc: "${KEILA_PROJECT_wwc}"
+      KEILA_PROJECT_bdc: "${KEILA_PROJECT_bdc}"
+      KEILA_PROJECT_rnm: "${KEILA_PROJECT_rnm}"
+      KEILA_PROJECT_phct: "${KEILA_PROJECT_phct}"
+      KEILA_PROJECT_trb: "${KEILA_PROJECT_trb}"
+      KEILA_PROJECT_jdco: "${KEILA_PROJECT_jdco}"
+      KEILA_PROJECT_kst: "${KEILA_PROJECT_kst}"
+    expose:
+      - "3150"
+    networks:
+      - postiz-network
+
+  daybook-postgres:
+    image: postgres:16-alpine
+    container_name: daybook-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DAYBOOK_DB_USER:-daybook}
+      POSTGRES_PASSWORD: ${DAYBOOK_DB_PASSWORD}
+      POSTGRES_DB: ${DAYBOOK_DB_NAME:-daybook}
+    volumes:
+      - daybook_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DAYBOOK_DB_USER:-daybook} -d ${DAYBOOK_DB_NAME:-daybook}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - postiz-network
+
+  daybook-app:
+    image: ghcr.io/jamesdunnington/daybook:latest
+    container_name: daybook-app
+    restart: unless-stopped
+    depends_on:
+      daybook-postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${DAYBOOK_DB_USER:-daybook}:${DAYBOOK_DB_PASSWORD}@daybook-postgres:5432/${DAYBOOK_DB_NAME:-daybook}
+      BETTER_AUTH_SECRET: ${DAYBOOK_AUTH_SECRET}
+      BETTER_AUTH_URL: https://daybook.thecontentwarrior.work
+      NEXT_PUBLIC_APP_URL: https://daybook.thecontentwarrior.work
+      OPENROUTER_API_KEY: ${DAYBOOK_OPENROUTER_KEY:-}
+      TELEGRAM_BOT_TOKEN: ${DAYBOOK_TELEGRAM_TOKEN:-}
+      SMTP_HOST: ${DAYBOOK_SMTP_HOST:-}
+      SMTP_PORT: ${DAYBOOK_SMTP_PORT:-587}
+      SMTP_USER: ${DAYBOOK_SMTP_USER:-}
+      SMTP_PASS: ${DAYBOOK_SMTP_PASS:-}
+      SMTP_FROM: ${DAYBOOK_SMTP_FROM:-noreply@daybook.local}
+      UPLOAD_DIR: /app/uploads
+      NODE_ENV: production
+      PORT: 3500
+    volumes:
+      - daybook_uploads:/app/uploads
+    networks:
+      - postiz-network
+
+  daybook-mcp:
+    image: ghcr.io/jamesdunnington/daybook-mcp:latest
+    container_name: daybook-mcp
+    restart: unless-stopped
+    depends_on:
+      - daybook-app
+    environment:
+      DAYBOOK_API_URL: http://daybook-app:3500
+      DAYBOOK_API_KEY: ${DAYBOOK_MCP_KEY:-}
+      MCP_SERVER_URL: https://mcpdaybook.thecontentwarrior.work
+      PORT: 3501
+    networks:
+      - postiz-network
+
+volumes:
+  postgres-data:
+  caddy_data:
+  caddy_config:
+  postgres-volume:
+  postiz-redis-data:
+  postiz-config:
+  postiz-uploads:
+  pinterest_postgres_data:
+  keila_db_data:
+  daybook_postgres_data:
+  daybook_uploads:
+
+networks:
+  postiz-network:
