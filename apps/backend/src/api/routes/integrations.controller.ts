@@ -718,6 +718,26 @@ export class IntegrationsController {
     };
   }
 
+  @Post('/compact-queue')
+  async compactQueue(
+    @GetOrgFromRequest() org: Organization,
+    @Body('timezone') timezone?: string
+  ) {
+    const result = await this._integrationService.compactQueue(
+      org.id,
+      timezone
+    );
+    return {
+      success: true,
+      moved: result.moved,
+      planned: result.planned,
+      message:
+        result.moved > 0
+          ? `Moved ${result.moved} posts earlier to close gaps`
+          : 'No gaps to close',
+    };
+  }
+
   @Post('/clear-published')
   async clearPublished(@GetOrgFromRequest() org: Organization) {
     const result = await this._integrationService.clearPublishedPosts(org.id);

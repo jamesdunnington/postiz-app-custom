@@ -1547,6 +1547,67 @@ export class IntegrationService {
     }
   }
 
+  // Closes gaps in each channel's queue: queued posts on preset slots are
+  // shifted, in their existing order, onto the earliest free preset slots.
+  // Only runs when the user clicks "Compact" - never automatically.
+  async compactQueue(orgId: string, timezoneName?: string) {
+    const { logger } = Sentry;
+    console.log('[COMPACT QUEUE] Starting queue compaction...');
+
+    try {
+      const moves = await this._postsRepository.planQueueCompaction(
+        orgId,
+        timezoneName
+      );
+
+      let moved = 0;
+      // Moves are ordered earliest-first per channel, so each post lands on a
+      // slot a previous post has already vacated.
+      for (const move of moves) {
+        try {
+          // Thread parts move with their root so the thread stays intact
+          await this._postsRepository.updatePostAndChildrenPublishDate(
+            move.postId,
+            move.to
+          );
+
+          await this._workerServiceProducer.delete('post', move.postId);
+          this._workerServiceProducer.emit('post', {
+            id: move.postId,
+            options: {
+              delay: dayjs(move.to).diff(dayjs(), 'millisecond'),
+            },
+            payload: {
+              id: move.postId,
+            },
+          });
+
+          moved++;
+          console.log(
+            `[COMPACT QUEUE] ✓ ${move.integrationName}: ${dayjs(move.from).format('YYYY-MM-DD HH:mm')} -> ${dayjs(move.to).format('YYYY-MM-DD HH:mm')}`
+          );
+        } catch (err) {
+          logger.error(
+            `Failed to compact post ${move.postId}: ${err instanceof Error ? err.message : String(err)}`
+          );
+          console.error(`[COMPACT QUEUE] ❌ Error moving post ${move.postId}:`, err);
+        }
+      }
+
+      logger.info(`Queue compaction complete: moved ${moved} posts`);
+      return { moved, planned: moves.length };
+    } catch (err) {
+      Sentry.captureException(err, {
+        extra: { context: 'Failed to compact queue', orgId },
+      });
+      logger.error(
+        `Error during queue compaction: ${err instanceof Error ? err.message : String(err)}`
+      );
+      console.error('[COMPACT QUEUE] ❌ Error during compaction:', err);
+      return { moved: 0, planned: 0 };
+    }
+  }
+
   async clearPublishedPosts(orgId: string) {
     const { logger } = Sentry;
     console.log('[CLEAR PUBLISHED] Starting removal of published posts...');

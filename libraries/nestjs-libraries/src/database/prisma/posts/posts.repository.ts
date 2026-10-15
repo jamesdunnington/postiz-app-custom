@@ -1463,6 +1463,161 @@ export class PostsRepository {
     return slots;
   }
 
+  // Plans a queue compaction. Per integration, the queued root posts that
+  // already sit on a preset slot keep their relative order but are shifted
+  // onto the earliest free preset slots, closing gaps (e.g. after a new
+  // preset time is added). A post is never moved later. Posts at off-preset
+  // times are left for "Clean Calendar" to handle.
+  async planQueueCompaction(orgId: string, timezoneName?: string) {
+    const bufferEnd = dayjs.utc().add(1, 'hour');
+
+    const posts = await this._post.model.post.findMany({
+      where: {
+        organizationId: orgId,
+        state: 'QUEUE',
+        deletedAt: null,
+        // Thread parts share their root's publishDate and move with it
+        parentPostId: null,
+        publishDate: { gt: bufferEnd.toDate() },
+      },
+      select: {
+        id: true,
+        publishDate: true,
+        integrationId: true,
+        integration: {
+          select: {
+            name: true,
+            postingTimes: true,
+            organization: {
+              select: {
+                users: {
+                  select: { user: { select: { timezone: true } } },
+                  take: 1,
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { publishDate: 'asc' },
+    });
+
+    const byIntegration = new Map<string, typeof posts>();
+    for (const post of posts) {
+      if (!byIntegration.has(post.integrationId)) {
+        byIntegration.set(post.integrationId, []);
+      }
+      byIntegration.get(post.integrationId)!.push(post);
+    }
+
+    const moves: {
+      postId: string;
+      integrationId: string;
+      integrationName: string;
+      from: Date;
+      to: Date;
+    }[] = [];
+
+    for (const [integrationId, group] of byIntegration.entries()) {
+      const integration = group[0].integration;
+
+      // postingTimes is a string (TEXT column) holding a JSON array
+      let raw: any = integration?.postingTimes;
+      if (typeof raw === 'string') {
+        try {
+          raw = JSON.parse(raw);
+        } catch {
+          raw = [];
+        }
+      }
+      const times: number[] = (Array.isArray(raw) ? raw : [])
+        .map((t: any) => (typeof t === 'number' ? t : t?.time))
+        .filter((t: any) => typeof t === 'number');
+      if (times.length === 0) {
+        continue;
+      }
+
+      const userTimezone =
+        integration?.organization?.users?.[0]?.user?.timezone || 0;
+
+      // Every preset slot from yesterday (UTC) until a day past the last
+      // queued post, keeping only those after the 1 hour buffer.
+      const lastPostTs = group[group.length - 1].publishDate.getTime();
+      const slotSet = new Set<number>();
+      let day = dayjs.utc().subtract(1, 'day').startOf('day');
+      for (let i = 0; i < 800 && day.valueOf() <= lastPostTs + 86400000; i++) {
+        for (const time of times) {
+          const hours = Math.floor(time / 60);
+          const minutes = time % 60;
+          const slot = timezoneName
+            ? dayjs
+                .tz(day.format('YYYY-MM-DD'), timezoneName)
+                .hour(hours)
+                .minute(minutes)
+                .second(0)
+                .millisecond(0)
+                .utc()
+            : day
+                .hour(hours)
+                .minute(minutes)
+                .second(0)
+                .millisecond(0)
+                .subtract(userTimezone, 'minute');
+          if (slot.isAfter(bufferEnd)) {
+            slotSet.add(slot.valueOf());
+          }
+        }
+        day = day.add(1, 'day');
+      }
+      const allSlots = Array.from(slotSet).sort((a, b) => a - b);
+      const slotMinutes = new Set(allSlots.map((s) => Math.floor(s / 60000)));
+
+      // Slots held by posts we are NOT moving (published, or queued posts
+      // that are outside the movable group) are unavailable.
+      const blockers = await this._post.model.post.findMany({
+        where: {
+          organizationId: orgId,
+          integrationId,
+          deletedAt: null,
+          parentPostId: null,
+          state: { in: ['QUEUE', 'PUBLISHED'] },
+          publishDate: { gte: bufferEnd.subtract(2, 'minute').toDate() },
+          id: { notIn: group.map((p) => p.id) },
+        },
+        select: { publishDate: true },
+      });
+      const blockedMinutes = new Set(
+        blockers.map((b) => Math.floor(b.publishDate.getTime() / 60000))
+      );
+      const freeSlots = allSlots.filter(
+        (s) => !blockedMinutes.has(Math.floor(s / 60000))
+      );
+
+      // Only posts already on a preset slot (1 minute tolerance) take part
+      const onPreset = group.filter((p) => {
+        const m = Math.round(p.publishDate.getTime() / 60000);
+        return slotMinutes.has(m) || slotMinutes.has(m - 1) || slotMinutes.has(m + 1);
+      });
+
+      for (let i = 0; i < onPreset.length && i < freeSlots.length; i++) {
+        const post = onPreset[i];
+        const target = freeSlots[i];
+        // Only move earlier, ignoring sub-minute differences
+        if (post.publishDate.getTime() - target > 60000) {
+          moves.push({
+            postId: post.id,
+            integrationId,
+            integrationName: integration?.name || integrationId,
+            from: post.publishDate,
+            to: new Date(target),
+          });
+        }
+      }
+    }
+
+    return moves;
+  }
+
   // Find duplicate schedules (same integration + same publishDate at minute-level precision)
   async findDuplicateSchedules() {
     const now = dayjs.utc();

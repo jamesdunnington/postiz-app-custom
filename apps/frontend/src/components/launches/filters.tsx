@@ -46,6 +46,7 @@ export const Filters = () => {
   const fetch = useFetch();
   const toast = useToaster();
   const [isValidating, setIsValidating] = useState(false);
+  const [isCompacting, setIsCompacting] = useState(false);
 
   // Set dayjs locale based on current language
   const currentLanguage = i18next.resolvedLanguage || 'en';
@@ -232,8 +233,40 @@ export const Filters = () => {
     [setDay, setWeek, setMonth]
   );
 
+  const compactQueue = useCallback(async () => {
+    if (isValidating || isCompacting) return;
+
+    setIsCompacting(true);
+
+    try {
+      toast.show('Compacting queue: closing gaps in preset slots...', 'warning');
+      const response = await fetch('/integrations/compact-queue', {
+        method: 'POST',
+        body: JSON.stringify({ timezone: getTimezone() }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        toast.show(
+          result.moved > 0
+            ? `✓ Moved ${result.moved} posts earlier to close gaps`
+            : '✓ No gaps to close',
+          'success'
+        );
+      } else {
+        toast.show('Failed to compact queue', 'warning');
+      }
+
+      calendar.reloadCalendarView();
+    } catch (error) {
+      toast.show('Failed to compact queue', 'warning');
+    } finally {
+      setIsCompacting(false);
+    }
+  }, [fetch, toast, calendar, isValidating, isCompacting]);
+
   const cleanCalendar = useCallback(async () => {
-    if (isValidating) return;
+    if (isValidating || isCompacting) return;
 
     setIsValidating(true);
 
@@ -307,7 +340,7 @@ export const Filters = () => {
     } finally {
       setIsValidating(false);
     }
-  }, [fetch, toast, calendar, isValidating]);
+  }, [fetch, toast, calendar, isValidating, isCompacting]);
 
   return (
     <div className="text-textColor flex flex-col md:flex-row gap-[8px] items-center select-none">
@@ -389,6 +422,31 @@ export const Filters = () => {
                 />
               </svg>
               {isValidating ? 'Cleaning...' : 'Clean Calendar'}
+            </div>
+            <div
+              onClick={compactQueue}
+              className={clsx(
+                'hover:text-textItemFocused hover:bg-boxFocused py-[3px] px-[9px] flex justify-center items-center gap-[6px] rounded-[8px] transition-all text-[14px] bg-newBgColorInner border border-newTableBorder',
+                isCompacting || isValidating
+                  ? 'cursor-wait opacity-60'
+                  : 'cursor-pointer'
+              )}
+              title="Close gaps: move queued posts earlier onto the next free preset slots, keeping their order"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                className={clsx(isCompacting && 'animate-spin')}
+              >
+                <path
+                  d="M12 3L8 7H11V11H13V7H16L12 3ZM12 21L16 17H13V13H11V17H8L12 21Z"
+                  fill="currentColor"
+                />
+              </svg>
+              {isCompacting ? 'Compacting...' : 'Compact'}
             </div>
           </div>
         </div>
