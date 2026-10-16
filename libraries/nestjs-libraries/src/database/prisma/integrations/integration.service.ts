@@ -1667,6 +1667,119 @@ export class IntegrationService {
     }
   }
 
+  // Step 4 of Clean Calendar: repeat pins (same title + description +
+  // image) sitting in the queue more than once. A repeat on the SAME
+  // integration is an unambiguous accident (e.g. a batch CSV resubmitted
+  // after a stalled queue) - auto-keep the earliest copy, delete the
+  // rest. A repeat that spans DIFFERENT integrations might be deliberate
+  // (same pin posted to multiple boards/accounts on purpose), so those
+  // groups are left untouched here and handed back for the user to pick
+  // which copy to keep via resolveDuplicatePinterestPins.
+  async cleanDuplicatePinterestPins(orgId: string) {
+    const { logger } = Sentry;
+    console.log('[DUPLICATE PINS] Starting duplicate pin content check...');
+
+    try {
+      const groups = await this._postsRepository.findDuplicatePinterestPinGroups(
+        orgId
+      );
+
+      if (groups.length === 0) {
+        console.log('[DUPLICATE PINS] ✅ No duplicate pins found');
+        return { removed: 0, needsReview: [] as any[] };
+      }
+
+      const toRemove: string[] = [];
+      const needsReview: any[] = [];
+
+      for (const group of groups) {
+        const integrationIds = new Set(group.map((p) => p.integrationId));
+        if (integrationIds.size === 1) {
+          // Same integration: posts arrived sorted earliest-first, keep
+          // index 0, remove the rest automatically.
+          toRemove.push(...group.slice(1).map((p) => p.id));
+        } else {
+          needsReview.push({
+            key: group.map((p) => p.id).join(','),
+            posts: group.map((p) => ({
+              id: p.id,
+              integrationId: p.integrationId,
+              publishDate: p.publishDate,
+              content: p.content,
+              image: p.image,
+            })),
+          });
+        }
+      }
+
+      let removed = 0;
+      if (toRemove.length > 0) {
+        removed = await this._postsRepository.softDeletePostsByIds(
+          orgId,
+          toRemove
+        );
+        for (const id of toRemove) {
+          try {
+            await this._workerServiceProducer.delete('post', id);
+          } catch (err) {
+            // No existing job to remove - fine, post may not have had one yet
+          }
+        }
+      }
+
+      console.log(
+        `[DUPLICATE PINS] ✅ Auto-removed ${removed} same-integration repeat(s); ${needsReview.length} cross-integration group(s) need a choice`
+      );
+      logger.info(
+        `Duplicate pin check: auto-removed ${removed}, ${needsReview.length} groups awaiting user choice`
+      );
+
+      return { removed, needsReview };
+    } catch (err) {
+      Sentry.captureException(err, {
+        extra: { context: 'Failed to clean duplicate pinterest pins', orgId },
+      });
+      logger.error(
+        `Error during duplicate pin check: ${err instanceof Error ? err.message : String(err)}`
+      );
+      console.error('[DUPLICATE PINS] ❌ Error:', err);
+      return { removed: 0, needsReview: [] as any[] };
+    }
+  }
+
+  // User's decision for cross-integration duplicate groups surfaced by
+  // cleanDuplicatePinterestPins: removeIds is every post id they chose
+  // NOT to keep, already flattened by the frontend from its per-group
+  // radio selection.
+  async resolveDuplicatePinterestPins(orgId: string, removeIds: string[]) {
+    const { logger } = Sentry;
+
+    try {
+      const removed = await this._postsRepository.softDeletePostsByIds(
+        orgId,
+        removeIds
+      );
+      for (const id of removeIds) {
+        try {
+          await this._workerServiceProducer.delete('post', id);
+        } catch (err) {
+          // No existing job to remove - fine
+        }
+      }
+
+      logger.info(`Resolved duplicate pins: removed ${removed} user-selected copies`);
+      return { removed };
+    } catch (err) {
+      Sentry.captureException(err, {
+        extra: { context: 'Failed to resolve duplicate pinterest pins', orgId },
+      });
+      logger.error(
+        `Error resolving duplicate pins: ${err instanceof Error ? err.message : String(err)}`
+      );
+      return { removed: 0 };
+    }
+  }
+
   async recoverMediaFromPosts(orgId: string) {
     const { logger } = Sentry;
     console.log('[MEDIA RECOVERY] Starting media recovery from active posts...');

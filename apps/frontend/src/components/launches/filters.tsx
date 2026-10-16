@@ -13,6 +13,8 @@ import {
 } from '@gitroom/frontend/components/layout/set.timezone';
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { useToaster } from '@gitroom/react/toaster/toaster';
+import { useModals } from '@gitroom/frontend/components/layout/new-modal';
+import { DuplicatePinsReviewModal } from '@gitroom/frontend/components/launches/duplicate.pins.review.modal';
 
 // Helper function to get start and end dates based on display type
 function getDateRange(
@@ -45,6 +47,7 @@ export const Filters = () => {
   const t = useT();
   const fetch = useFetch();
   const toast = useToaster();
+  const modal = useModals();
   const [isValidating, setIsValidating] = useState(false);
   const [isCompacting, setIsCompacting] = useState(false);
 
@@ -272,7 +275,7 @@ export const Filters = () => {
 
     try {
       // Step 1: Validate Slots
-      toast.show('Step 1/3: Validating all scheduled posts...', 'warning');
+      toast.show('Step 1/4: Validating all scheduled posts...', 'warning');
       const validateResponse = await fetch('/integrations/validate-all-timeslots', {
         method: 'POST',
         body: JSON.stringify({ timezone: getTimezone() }),
@@ -293,7 +296,7 @@ export const Filters = () => {
       }
 
       // Step 2: Check Duplicates
-      toast.show('Step 2/3: Checking for duplicate schedules...', 'warning');
+      toast.show('Step 2/4: Checking for duplicate schedules...', 'warning');
       const dupResponse = await fetch('/integrations/check-duplicates', {
         method: 'POST',
       });
@@ -313,7 +316,7 @@ export const Filters = () => {
       }
 
       // Step 3: Clear Published Posts
-      toast.show('Step 3/3: Clearing published posts...', 'warning');
+      toast.show('Step 3/4: Clearing published posts...', 'warning');
       const clearResponse = await fetch('/integrations/clear-published', {
         method: 'POST',
       });
@@ -332,6 +335,42 @@ export const Filters = () => {
         toast.show('Failed to clear published posts', 'warning');
       }
 
+      // Step 4: Remove repeat pins
+      toast.show('Step 4/4: Checking for repeat pins...', 'warning');
+      const dupPinsResponse = await fetch('/integrations/clean-duplicate-pins', {
+        method: 'POST',
+      });
+
+      if (dupPinsResponse.ok) {
+        const dupPinsResult = await dupPinsResponse.json();
+        if (dupPinsResult.removed > 0) {
+          toast.show(
+            `✓ Removed ${dupPinsResult.removed} repeat pin(s)`,
+            'success'
+          );
+        }
+        if (dupPinsResult.needsReview?.length > 0) {
+          modal.openModal({
+            closeOnClickOutside: false,
+            withCloseButton: false,
+            classNames: {
+              modal: 'w-[100%] max-w-[700px] bg-transparent text-textColor',
+            },
+            children: (
+              <DuplicatePinsReviewModal
+                groups={dupPinsResult.needsReview}
+                integrations={calendar.integrations}
+                onResolved={calendar.reloadCalendarView}
+              />
+            ),
+          });
+        } else if (dupPinsResult.removed === 0) {
+          toast.show('✓ No repeat pins found', 'success');
+        }
+      } else {
+        toast.show('Failed to check for repeat pins', 'warning');
+      }
+
       // Refresh calendar after all operations
       calendar.reloadCalendarView();
       toast.show('✓ Calendar cleanup complete', 'success');
@@ -340,7 +379,7 @@ export const Filters = () => {
     } finally {
       setIsValidating(false);
     }
-  }, [fetch, toast, calendar, isValidating, isCompacting]);
+  }, [fetch, toast, calendar, modal, isValidating, isCompacting]);
 
   return (
     <div className="text-textColor flex flex-col md:flex-row gap-[8px] items-center select-none">
@@ -406,7 +445,7 @@ export const Filters = () => {
                 'hover:text-textItemFocused hover:bg-boxFocused py-[3px] px-[9px] flex justify-center items-center gap-[6px] rounded-[8px] transition-all text-[14px] bg-newBgColorInner border border-newTableBorder',
                 isValidating ? 'cursor-wait opacity-60' : 'cursor-pointer'
               )}
-              title="Validate slots, check duplicates, and clear published posts"
+              title="Validate slots, check duplicate schedules, clear published posts, and remove repeat pins"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"

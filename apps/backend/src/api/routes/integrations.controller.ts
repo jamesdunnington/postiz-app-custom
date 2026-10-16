@@ -752,6 +752,37 @@ export class IntegrationsController {
     };
   }
 
+  @Post('/clean-duplicate-pins')
+  async cleanDuplicatePins(@GetOrgFromRequest() org: Organization) {
+    const result = await this._integrationService.cleanDuplicatePinterestPins(
+      org.id
+    );
+    return {
+      success: true,
+      removed: result.removed,
+      needsReview: result.needsReview,
+      message:
+        result.removed > 0
+          ? `Removed ${result.removed} repeat pin(s)`
+          : 'No repeat pins found',
+    };
+  }
+
+  @Post('/resolve-duplicate-pins')
+  async resolveDuplicatePins(
+    @GetOrgFromRequest() org: Organization,
+    @Body('removeIds') removeIds: string[]
+  ) {
+    const result = await this._integrationService.resolveDuplicatePinterestPins(
+      org.id,
+      removeIds || []
+    );
+    return {
+      success: true,
+      removed: result.removed,
+    };
+  }
+
   @Post('/delete-unused-media')
   async deleteUnusedMedia(
     @GetOrgFromRequest() org: Organization,

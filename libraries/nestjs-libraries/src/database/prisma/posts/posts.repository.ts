@@ -1730,6 +1730,83 @@ export class PostsRepository {
     return duplicates;
   }
 
+  // Finds repeat pins sitting in the queue: same title + description,
+  // scheduled more than once. Image is deliberately NOT part of the match
+  // - once an image is rehosted to Postiz's own storage each upload gets
+  // its own unique path even when the source image was identical, so
+  // comparing stored paths would miss real duplicates. Checked org-wide
+  // across every Pinterest integration (not per-account) and across the
+  // whole queue (no time window), since a repeat two boards apart or
+  // months apart is still a repeat. Returns each duplicate group as-is
+  // (posts sorted earliest-first) — the caller decides what to do with a
+  // group depending on whether it spans one integration or several.
+  async findDuplicatePinterestPinGroups(orgId: string) {
+    const posts = await this._post.model.post.findMany({
+      where: {
+        organizationId: orgId,
+        state: 'QUEUE',
+        deletedAt: null,
+        parentPostId: null,
+        integration: {
+          providerIdentifier: 'pinterest',
+        },
+      },
+      select: {
+        id: true,
+        integrationId: true,
+        content: true,
+        image: true,
+        settings: true,
+        publishDate: true,
+      },
+      orderBy: {
+        publishDate: 'asc',
+      },
+    });
+
+    const grouped = new Map<string, typeof posts>();
+    for (const post of posts) {
+      let title = '';
+      try {
+        title = (JSON.parse(post.settings || '{}')?.title || '')
+          .trim()
+          .toLowerCase();
+      } catch {
+        // malformed settings JSON - treat title as empty rather than crash the scan
+      }
+
+      const content = (post.content || '').trim().toLowerCase();
+      const key = `${title}::${content}`;
+      if (!grouped.has(key)) {
+        grouped.set(key, []);
+      }
+      grouped.get(key)!.push(post);
+    }
+
+    return Array.from(grouped.values()).filter((group) => group.length > 1);
+  }
+
+  // Soft-deletes a specific set of posts by id, scoped to the org so one
+  // org can never remove another's posts through this path.
+  async softDeletePostsByIds(orgId: string, ids: string[]) {
+    if (ids.length === 0) {
+      return 0;
+    }
+
+    const result = await this._post.model.post.updateMany({
+      where: {
+        organizationId: orgId,
+        id: { in: ids },
+        deletedAt: null,
+      },
+      data: {
+        deletedAt: new Date(),
+      },
+    });
+
+    return result.count;
+  }
+
   // Get all posts for a specific integration and publish date (at minute-level precision)
   async getPostsByIntegrationAndDate(integrationId: string, publishDate: Date) {
     // Find posts within the same minute (ignore seconds/milliseconds)
