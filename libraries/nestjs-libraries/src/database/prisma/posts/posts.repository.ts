@@ -541,24 +541,48 @@ export class PostsRepository {
     );
   }
 
-  // Searches forward, day by day over the integration's preset posting
-  // times starting at searchFrom, for the first slot that is both free (not
-  // already occupied by another post) and at least 7 days from every other
-  // post sharing the same URL. Used to push a pin forward when saving or
-  // dragging it to a new date would otherwise repeat a URL too soon.
-  private async findCooldownSlot(
+  // True when slotDate is both free (no other post already occupying it)
+  // and at least 7 days from every other post sharing the same URL.
+  private async isSlotCompliant(
+    orgId: string,
+    integrationId: string,
+    excludePostId: string | undefined,
+    url: string,
+    slotDate: Date
+  ): Promise<boolean> {
+    const endOfMinute = dayjs(slotDate).add(1, 'minute').toDate();
+
+    const occupied = await this._post.model.post.findFirst({
+      where: {
+        integrationId,
+        organizationId: orgId,
+        publishDate: { gte: slotDate, lt: endOfMinute },
+        deletedAt: null,
+        state: { in: ['QUEUE', 'PUBLISHED'] },
+        ...(excludePostId ? { id: { not: excludePostId } } : {}),
+      },
+    });
+    if (occupied) {
+      return false;
+    }
+
+    return !(await this.isUrlConflicting(orgId, url, slotDate, excludePostId));
+  }
+
+  // Scans the integration's preset posting times one direction away from
+  // searchFrom (forward: later dates; backward: earlier dates, never
+  // earlier than right now) for the first slot that is compliant - see
+  // isSlotCompliant.
+  private async scanForCooldownSlot(
     orgId: string,
     integrationId: string,
     postingTimes: { time: number }[],
     userTimezone: number,
     url: string,
     excludePostId: string | undefined,
-    searchFrom: Date
+    searchFrom: Date,
+    direction: 1 | -1
   ): Promise<Date | null> {
-    if (postingTimes.length === 0) {
-      return null;
-    }
-
     let currentDay = dayjs.utc(searchFrom).startOf('day');
     const maxDaysToCheck = 120;
 
@@ -573,38 +597,57 @@ export class PostsRepository {
           .millisecond(0)
           .subtract(userTimezone, 'minute');
 
-        if (!slotTime.isAfter(dayjs(searchFrom))) {
+        const inRange =
+          direction === 1
+            ? slotTime.isAfter(dayjs(searchFrom))
+            : slotTime.isAfter(dayjs()) && slotTime.isBefore(dayjs(searchFrom));
+        if (!inRange) {
           continue;
         }
 
         const slotDate = slotTime.toDate();
-        const endOfMinute = slotTime.add(1, 'minute').toDate();
-
-        const occupied = await this._post.model.post.findFirst({
-          where: {
-            integrationId,
-            organizationId: orgId,
-            publishDate: { gte: slotDate, lt: endOfMinute },
-            deletedAt: null,
-            state: { in: ['QUEUE', 'PUBLISHED'] },
-            ...(excludePostId ? { id: { not: excludePostId } } : {}),
-          },
-        });
-        if (occupied) {
-          continue;
+        if (await this.isSlotCompliant(orgId, integrationId, excludePostId, url, slotDate)) {
+          return slotDate;
         }
-
-        if (await this.isUrlConflicting(orgId, url, slotDate, excludePostId)) {
-          continue;
-        }
-
-        return slotDate;
       }
 
-      currentDay = currentDay.add(1, 'day');
+      currentDay = currentDay.add(direction, 'day');
     }
 
     return null;
+  }
+
+  // Finds the best slot to clear a URL cooldown conflict at searchFrom:
+  // checks both an earlier slot (pulling the pin backward, bounded by now)
+  // and a later one (pushing it forward), and picks whichever is closer to
+  // the date that was actually requested. Used when saving or dragging a
+  // pin to a new date would otherwise repeat a URL too soon.
+  private async findCooldownSlot(
+    orgId: string,
+    integrationId: string,
+    postingTimes: { time: number }[],
+    userTimezone: number,
+    url: string,
+    excludePostId: string | undefined,
+    searchFrom: Date
+  ): Promise<Date | null> {
+    if (postingTimes.length === 0) {
+      return null;
+    }
+
+    const [forward, backward] = await Promise.all([
+      this.scanForCooldownSlot(orgId, integrationId, postingTimes, userTimezone, url, excludePostId, searchFrom, 1),
+      this.scanForCooldownSlot(orgId, integrationId, postingTimes, userTimezone, url, excludePostId, searchFrom, -1),
+    ]);
+
+    if (forward && backward) {
+      const searchMs = searchFrom.getTime();
+      return Math.abs(forward.getTime() - searchMs) <= Math.abs(backward.getTime() - searchMs)
+        ? forward
+        : backward;
+    }
+
+    return forward ?? backward ?? null;
   }
 
   async changeDate(orgId: string, id: string, date: string) {
