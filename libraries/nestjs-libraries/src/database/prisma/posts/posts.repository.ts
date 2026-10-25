@@ -19,6 +19,28 @@ dayjs.extend(isSameOrAfter);
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
+const URL_COOLDOWN_DAYS = 7;
+
+// A post's destination URL (what Pinterest calls a pin's "link", Reddit a
+// link-post's "url") lives inside its JSON `settings` column under a
+// provider-specific key. Checking both covers every provider that stores
+// one without hardcoding any single integration.
+function extractUrlFromSettings(raw: unknown): string | null {
+  let settings: any = raw;
+  if (typeof settings === 'string') {
+    try {
+      settings = JSON.parse(settings);
+    } catch {
+      return null;
+    }
+  }
+  if (!settings || typeof settings !== 'object') {
+    return null;
+  }
+  const url = settings.link || settings.url;
+  return typeof url === 'string' && url.trim() ? url.trim() : null;
+}
+
 @Injectable()
 export class PostsRepository {
   constructor(
@@ -480,6 +502,111 @@ export class PostsRepository {
     });
   }
 
+  // True when some other root post (queued, published, or errored - never
+  // draft) sharing the same destination URL already sits within 7 days of
+  // candidateDate. Scoped to the whole org, not just one integration: the
+  // same link pinned from two different boards/accounts still counts as a
+  // repeat.
+  private async isUrlConflicting(
+    orgId: string,
+    url: string,
+    candidateDate: Date,
+    excludePostId?: string
+  ): Promise<boolean> {
+    const windowStart = dayjs(candidateDate)
+      .subtract(URL_COOLDOWN_DAYS, 'day')
+      .toDate();
+    const windowEnd = dayjs(candidateDate)
+      .add(URL_COOLDOWN_DAYS, 'day')
+      .toDate();
+    const cooldownMs = URL_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
+    const candidateMs = candidateDate.getTime();
+
+    const nearby = await this._post.model.post.findMany({
+      where: {
+        organizationId: orgId,
+        deletedAt: null,
+        parentPostId: null,
+        state: { in: ['QUEUE', 'PUBLISHED', 'ERROR'] },
+        publishDate: { gte: windowStart, lte: windowEnd },
+        ...(excludePostId ? { id: { not: excludePostId } } : {}),
+      },
+      select: { publishDate: true, settings: true },
+    });
+
+    return nearby.some(
+      (post) =>
+        extractUrlFromSettings(post.settings) === url &&
+        Math.abs(post.publishDate.getTime() - candidateMs) < cooldownMs
+    );
+  }
+
+  // Searches forward, day by day over the integration's preset posting
+  // times starting at searchFrom, for the first slot that is both free (not
+  // already occupied by another post) and at least 7 days from every other
+  // post sharing the same URL. Used to push a pin forward when saving or
+  // dragging it to a new date would otherwise repeat a URL too soon.
+  private async findCooldownSlot(
+    orgId: string,
+    integrationId: string,
+    postingTimes: { time: number }[],
+    userTimezone: number,
+    url: string,
+    excludePostId: string | undefined,
+    searchFrom: Date
+  ): Promise<Date | null> {
+    if (postingTimes.length === 0) {
+      return null;
+    }
+
+    let currentDay = dayjs.utc(searchFrom).startOf('day');
+    const maxDaysToCheck = 120;
+
+    for (let daysChecked = 0; daysChecked < maxDaysToCheck; daysChecked++) {
+      for (const { time } of postingTimes) {
+        const hours = Math.floor(time / 60);
+        const minutes = time % 60;
+        const slotTime = currentDay
+          .hour(hours)
+          .minute(minutes)
+          .second(0)
+          .millisecond(0)
+          .subtract(userTimezone, 'minute');
+
+        if (!slotTime.isAfter(dayjs(searchFrom))) {
+          continue;
+        }
+
+        const slotDate = slotTime.toDate();
+        const endOfMinute = slotTime.add(1, 'minute').toDate();
+
+        const occupied = await this._post.model.post.findFirst({
+          where: {
+            integrationId,
+            organizationId: orgId,
+            publishDate: { gte: slotDate, lt: endOfMinute },
+            deletedAt: null,
+            state: { in: ['QUEUE', 'PUBLISHED'] },
+            ...(excludePostId ? { id: { not: excludePostId } } : {}),
+          },
+        });
+        if (occupied) {
+          continue;
+        }
+
+        if (await this.isUrlConflicting(orgId, url, slotDate, excludePostId)) {
+          continue;
+        }
+
+        return slotDate;
+      }
+
+      currentDay = currentDay.add(1, 'day');
+    }
+
+    return null;
+  }
+
   async changeDate(orgId: string, id: string, date: string) {
     // Get the post to check its integration
     const post = await this._post.model.post.findUnique({
@@ -487,6 +614,7 @@ export class PostsRepository {
       select: {
         integrationId: true,
         state: true,
+        settings: true,
         integration: {
           select: {
             postingTimes: true,
@@ -514,9 +642,24 @@ export class PostsRepository {
     }
 
     let finalPublishDate = dayjs(date).toDate();
+    const url = extractUrlFromSettings(post.settings);
 
-    // Check for duplicate if post is QUEUE or DRAFT
-    if (post.state === 'QUEUE' || post.state === 'DRAFT') {
+    // Check for duplicate / URL cooldown if post is QUEUE, DRAFT, or ERROR -
+    // an errored pin being manually rescheduled still has to respect both
+    // rules, it just never gets moved automatically by anything else.
+    if (post.state === 'QUEUE' || post.state === 'DRAFT' || post.state === 'ERROR') {
+      // postingTimes is a JSON-encoded string column, not a native array -
+      // it must be parsed before the Array.isArray check below.
+      const postingTimesRaw = typeof post.integration?.postingTimes === 'string'
+        ? JSON.parse(post.integration.postingTimes || '[]')
+        : (post.integration?.postingTimes as any) || [];
+      const postingTimes = Array.isArray(postingTimesRaw)
+        ? postingTimesRaw.map((t: any) => typeof t === 'number' ? { time: t } : t)
+        : [];
+
+      // Get user timezone from integration
+      const userTimezone = post.integration?.organization?.users?.[0]?.user?.timezone || 0;
+
       const existingPost = await this.checkForDuplicateAtTime(
         post.integrationId,
         finalPublishDate,
@@ -528,14 +671,6 @@ export class PostsRepository {
           `[changeDate] Duplicate detected at ${dayjs(finalPublishDate).format('YYYY-MM-DD HH:mm')} ` +
           `for integration ${post.integrationId}. Auto-rescheduling to next available slot.`
         );
-
-        const postingTimesRaw = (post.integration?.postingTimes as any) || [];
-        const postingTimes = Array.isArray(postingTimesRaw) 
-          ? postingTimesRaw.map((t: any) => typeof t === 'number' ? { time: t } : t)
-          : [];
-
-        // Get user timezone from integration
-        const userTimezone = post.integration?.organization?.users?.[0]?.user?.timezone || 0;
 
         if (postingTimes.length > 0) {
           const availableSlots = await this.getNextAvailableSlots(
@@ -553,6 +688,32 @@ export class PostsRepository {
               `[changeDate] Rescheduled to ${dayjs(finalPublishDate).format('YYYY-MM-DD HH:mm')}`
             );
           }
+        }
+      }
+
+      // Same destination URL must not repeat within 7 days anywhere in the
+      // org's calendar - checked last so it has the final say on the date.
+      if (url && (await this.isUrlConflicting(orgId, url, finalPublishDate, id))) {
+        console.log(
+          `[changeDate] URL cooldown conflict at ${dayjs(finalPublishDate).format('YYYY-MM-DD HH:mm')} ` +
+          `for integration ${post.integrationId}. Rescheduling to the next slot 7+ days from this URL's other pins.`
+        );
+
+        const cooldownSlot = await this.findCooldownSlot(
+          orgId,
+          post.integrationId,
+          postingTimes,
+          userTimezone,
+          url,
+          id,
+          finalPublishDate
+        );
+
+        if (cooldownSlot) {
+          finalPublishDate = cooldownSlot;
+          console.log(
+            `[changeDate] Rescheduled to ${dayjs(finalPublishDate).format('YYYY-MM-DD HH:mm')} for URL cooldown`
+          );
         }
       }
     }
@@ -768,8 +929,59 @@ export class PostsRepository {
             }
           }
         }
+
+        // Same destination URL must not repeat within 7 days anywhere in
+        // the org's calendar - checked last so it has the final say on the
+        // date, including when re-saving a previously errored pin.
+        const candidateUrl = extractUrlFromSettings(body.settings);
+        if (candidateUrl && (await this.isUrlConflicting(orgId, candidateUrl, finalPublishDate, value.id))) {
+          console.log(
+            `[createOrUpdatePost] URL cooldown conflict at ${dayjs(finalPublishDate).format('YYYY-MM-DD HH:mm')} ` +
+            `for integration ${body.integration.id}. Rescheduling to the next slot 7+ days from this URL's other pins.`
+          );
+
+          const integrationForCooldown = await this._integrations.model.integration.findUnique({
+            where: { id: body.integration.id },
+            select: {
+              postingTimes: true,
+              organization: {
+                include: {
+                  users: {
+                    take: 1,
+                    select: { user: { select: { timezone: true } } },
+                  },
+                },
+              },
+            },
+          });
+
+          const cooldownPostingTimesRaw = typeof integrationForCooldown?.postingTimes === 'string'
+            ? JSON.parse(integrationForCooldown.postingTimes || '[]')
+            : (integrationForCooldown?.postingTimes as any) || [];
+          const cooldownPostingTimes = Array.isArray(cooldownPostingTimesRaw)
+            ? cooldownPostingTimesRaw.map((t: any) => typeof t === 'number' ? { time: t } : t)
+            : [];
+          const cooldownUserTimezone = integrationForCooldown?.organization?.users?.[0]?.user?.timezone || 0;
+
+          const cooldownSlot = await this.findCooldownSlot(
+            orgId,
+            body.integration.id,
+            cooldownPostingTimes,
+            cooldownUserTimezone,
+            candidateUrl,
+            value.id,
+            finalPublishDate
+          );
+
+          if (cooldownSlot) {
+            finalPublishDate = cooldownSlot;
+            console.log(
+              `[createOrUpdatePost] Rescheduled to ${dayjs(finalPublishDate).format('YYYY-MM-DD HH:mm')} for URL cooldown`
+            );
+          }
+        }
       }
-      
+
       const updateData = (type: 'create' | 'update') => ({
         publishDate: finalPublishDate,
         integration: {
@@ -1466,10 +1678,22 @@ export class PostsRepository {
   // Plans a queue compaction. Per integration, the queued root posts that
   // already sit on a preset slot keep their relative order but are shifted
   // onto the earliest free preset slots, closing gaps (e.g. after a new
-  // preset time is added). A post is never moved later. Posts at off-preset
-  // times are left for "Clean Calendar" to handle.
+  // preset time is added). Posts at off-preset times are left for "Clean
+  // Calendar" to handle.
+  //
+  // Layered on top of that gap-closing: no two root posts anywhere in the
+  // org (any integration) that share the same destination URL may end up
+  // within 7 days of each other. When the earliest free slot for a post
+  // would repeat its URL too soon, that post is pushed forward to the next
+  // free slot that clears the cooldown instead - a post is only ever
+  // skipped forward this way, never pulled backward past its own gap-close
+  // position. A slot skipped over for this reason is left empty rather
+  // than backfilled from a later post in this same run: it stays open for
+  // whatever lands in the queue (e.g. the next CSV batch) and a future
+  // Compact run will fill it then, once there's a URL that actually fits.
   async planQueueCompaction(orgId: string, timezoneName?: string) {
     const bufferEnd = dayjs.utc().add(1, 'hour');
+    const cooldownMs = URL_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
 
     const posts = await this._post.model.post.findMany({
       where: {
@@ -1484,6 +1708,7 @@ export class PostsRepository {
         id: true,
         publishDate: true,
         integrationId: true,
+        settings: true,
         integration: {
           select: {
             name: true,
@@ -1508,6 +1733,36 @@ export class PostsRepository {
         byIntegration.set(post.integrationId, []);
       }
       byIntegration.get(post.integrationId)!.push(post);
+    }
+
+    // URL -> every known timestamp (ms) currently "occupying" it: published
+    // and errored posts from the last 7 days (older ones can't be within 7
+    // days of any future queued post), plus every queued post not being
+    // moved by this run, plus - as this function places each movable post -
+    // its new timestamp too, so later integrations in this same run see it.
+    const urlAnchors = new Map<string, number[]>();
+    const addUrlAnchor = (url: string | null, ts: number) => {
+      if (!url) return;
+      const list = urlAnchors.get(url);
+      if (list) {
+        list.push(ts);
+      } else {
+        urlAnchors.set(url, [ts]);
+      }
+    };
+
+    const anchorPosts = await this._post.model.post.findMany({
+      where: {
+        organizationId: orgId,
+        state: { in: ['PUBLISHED', 'ERROR'] },
+        deletedAt: null,
+        parentPostId: null,
+        publishDate: { gte: dayjs.utc().subtract(URL_COOLDOWN_DAYS, 'day').toDate() },
+      },
+      select: { publishDate: true, settings: true },
+    });
+    for (const p of anchorPosts) {
+      addUrlAnchor(extractUrlFromSettings(p.settings), p.publishDate.getTime());
     }
 
     const moves: {
@@ -1540,12 +1795,14 @@ export class PostsRepository {
       const userTimezone =
         integration?.organization?.users?.[0]?.user?.timezone || 0;
 
-      // Every preset slot from yesterday (UTC) until a day past the last
-      // queued post, keeping only those after the 1 hour buffer.
+      // Every preset slot from yesterday (UTC) until well past the last
+      // queued post, keeping only those after the 1 hour buffer. The extra
+      // 60 days (instead of just 1) gives the URL-cooldown pass somewhere
+      // to push a post forward to when its earliest slot is too soon.
       const lastPostTs = group[group.length - 1].publishDate.getTime();
       const slotSet = new Set<number>();
       let day = dayjs.utc().subtract(1, 'day').startOf('day');
-      for (let i = 0; i < 800 && day.valueOf() <= lastPostTs + 86400000; i++) {
+      for (let i = 0; i < 800 && day.valueOf() <= lastPostTs + 60 * 86400000; i++) {
         for (const time of times) {
           const hours = Math.floor(time / 60);
           const minutes = time % 60;
@@ -1599,11 +1856,68 @@ export class PostsRepository {
         return slotMinutes.has(m) || slotMinutes.has(m - 1) || slotMinutes.has(m + 1);
       });
 
-      for (let i = 0; i < onPreset.length && i < freeSlots.length; i++) {
-        const post = onPreset[i];
-        const target = freeSlots[i];
-        // Only move earlier, ignoring sub-minute differences
-        if (post.publishDate.getTime() - target > 60000) {
+      // Everything else in this integration's movable group (off-preset
+      // posts) stays put, so its URL still has to be respected as a fixed
+      // anchor for the posts we ARE repositioning.
+      const onPresetIds = new Set(onPreset.map((p) => p.id));
+      for (const p of group) {
+        if (!onPresetIds.has(p.id)) {
+          addUrlAnchor(extractUrlFromSettings(p.settings), p.publishDate.getTime());
+        }
+      }
+
+      let pointer = 0;
+      for (const post of onPreset) {
+        const url = extractUrlFromSettings(post.settings);
+
+        if (!url) {
+          // No URL on this post - exact original gap-closing behaviour.
+          if (pointer >= freeSlots.length) {
+            continue;
+          }
+          const target = freeSlots[pointer];
+          pointer++;
+          if (post.publishDate.getTime() - target > 60000) {
+            moves.push({
+              postId: post.id,
+              integrationId,
+              integrationName: integration?.name || integrationId,
+              from: post.publishDate,
+              to: new Date(target),
+            });
+          }
+          continue;
+        }
+
+        // Find the earliest free slot from here on that keeps this URL at
+        // least 7 days from every other post that uses it.
+        let chosenIdx = -1;
+        for (let idx = pointer; idx < freeSlots.length; idx++) {
+          const slotTs = freeSlots[idx];
+          const anchors = urlAnchors.get(url) || [];
+          if (!anchors.some((t) => Math.abs(t - slotTs) < cooldownMs)) {
+            chosenIdx = idx;
+            break;
+          }
+        }
+
+        if (chosenIdx === -1) {
+          // Nothing compliant generated this run - leave it where it is,
+          // but it still counts as an anchor for posts processed after it.
+          addUrlAnchor(url, post.publishDate.getTime());
+          continue;
+        }
+
+        const target = freeSlots[chosenIdx];
+        // Any slots between pointer and chosenIdx are left empty on
+        // purpose, not backfilled from a later post in this same run.
+        pointer = chosenIdx + 1;
+        addUrlAnchor(url, target);
+
+        // Unlike the no-URL case, this can move a post LATER than it
+        // currently is, to clear the cooldown - so compare in both
+        // directions, ignoring sub-minute differences.
+        if (Math.abs(post.publishDate.getTime() - target) > 60000) {
           moves.push({
             postId: post.id,
             integrationId,

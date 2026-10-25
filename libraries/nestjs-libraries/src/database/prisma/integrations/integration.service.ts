@@ -1549,6 +1549,8 @@ export class IntegrationService {
 
   // Closes gaps in each channel's queue: queued posts on preset slots are
   // shifted, in their existing order, onto the earliest free preset slots.
+  // Also enforces the 7-day same-URL cooldown across the whole org while
+  // doing so (see PostsRepository.planQueueCompaction for the algorithm).
   // Only runs when the user clicks "Compact" - never automatically.
   async compactQueue(orgId: string, timezoneName?: string) {
     const { logger } = Sentry;

@@ -242,7 +242,7 @@ export const Filters = () => {
     setIsCompacting(true);
 
     try {
-      toast.show('Compacting queue: closing gaps in preset slots...', 'warning');
+      toast.show('Compacting queue: closing gaps and spacing out repeat URLs...', 'warning');
       const response = await fetch('/integrations/compact-queue', {
         method: 'POST',
         body: JSON.stringify({ timezone: getTimezone() }),
@@ -252,8 +252,8 @@ export const Filters = () => {
         const result = await response.json();
         toast.show(
           result.moved > 0
-            ? `✓ Moved ${result.moved} posts earlier to close gaps`
-            : '✓ No gaps to close',
+            ? `✓ Moved ${result.moved} posts to close gaps and keep URLs 7+ days apart`
+            : '✓ No changes needed',
           'success'
         );
       } else {
