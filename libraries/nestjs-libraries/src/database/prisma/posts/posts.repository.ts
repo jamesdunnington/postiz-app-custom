@@ -277,11 +277,24 @@ export class PostsRepository {
   }
 
   async removePublishedPosts(orgId: string) {
+    // Published posts are still read as fixed 7-day URL-cooldown anchors
+    // (see isUrlConflicting / planQueueCompaction's anchorPosts query) -
+    // soft-deleting one immediately erases that memory, so Compact (or
+    // any other reschedule) could then book the same URL again sooner
+    // than 7 days after it actually went out. Only clear posts that have
+    // already aged out of the cooldown window; they still never get
+    // reused or moved themselves (only QUEUE posts are ever scheduled).
+    const cooldownCutoff = dayjs
+      .utc()
+      .subtract(URL_COOLDOWN_DAYS, 'day')
+      .toDate();
+
     const published = await this._post.model.post.findMany({
       where: {
         organizationId: orgId,
         state: 'PUBLISHED',
         deletedAt: null,
+        publishDate: { lt: cooldownCutoff },
       },
       select: {
         id: true,
@@ -343,6 +356,7 @@ export class PostsRepository {
         organizationId: orgId,
         state: 'PUBLISHED',
         deletedAt: null,
+        publishDate: { lt: cooldownCutoff },
       },
       data: {
         deletedAt: new Date(),
