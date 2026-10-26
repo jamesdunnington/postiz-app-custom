@@ -1909,6 +1909,9 @@ export class PostsRepository {
         }
       }
 
+      const finalTargetMs = new Map<string, number>();
+      const postMoveIndex = new Map<string, number>();
+
       let pointer = 0;
       for (const post of onPreset) {
         const url = extractUrlFromSettings(post.settings);
@@ -1916,10 +1919,12 @@ export class PostsRepository {
         if (!url) {
           // No URL on this post - exact original gap-closing behaviour.
           if (pointer >= freeSlots.length) {
+            finalTargetMs.set(post.id, post.publishDate.getTime());
             continue;
           }
           const target = freeSlots[pointer];
           pointer++;
+          finalTargetMs.set(post.id, target);
           if (post.publishDate.getTime() - target > 60000) {
             moves.push({
               postId: post.id,
@@ -1928,6 +1933,7 @@ export class PostsRepository {
               from: post.publishDate,
               to: new Date(target),
             });
+            postMoveIndex.set(post.id, moves.length - 1);
           }
           continue;
         }
@@ -1945,17 +1951,23 @@ export class PostsRepository {
         }
 
         if (chosenIdx === -1) {
-          // Nothing compliant generated this run - leave it where it is,
-          // but it still counts as an anchor for posts processed after it.
+          // Nothing compliant from here on in this first, order-preserving
+          // pass - leave it where it is for now. It still counts as an
+          // anchor, and the backfill pass below gets one more chance to
+          // pull it (or any other URL pin) into an earlier gap once every
+          // post in this integration has been through this loop.
           addUrlAnchor(url, post.publishDate.getTime());
+          finalTargetMs.set(post.id, post.publishDate.getTime());
           continue;
         }
 
         const target = freeSlots[chosenIdx];
-        // Any slots between pointer and chosenIdx are left empty on
-        // purpose, not backfilled from a later post in this same run.
+        // Any slots between pointer and chosenIdx are left open by this
+        // first pass - the backfill step below gets the final say on
+        // whether they stay that way.
         pointer = chosenIdx + 1;
         addUrlAnchor(url, target);
+        finalTargetMs.set(post.id, target);
 
         // Unlike the no-URL case, this can move a post LATER than it
         // currently is, to clear the cooldown - so compare in both
@@ -1968,6 +1980,89 @@ export class PostsRepository {
             from: post.publishDate,
             to: new Date(target),
           });
+          postMoveIndex.set(post.id, moves.length - 1);
+        }
+      }
+
+      // Final pass: Compact means compact. The loop above only ever lets a
+      // post skip forward (never pulls one backward past its own
+      // gap-close position), so a slot it skipped over can sit empty even
+      // though some OTHER, later-queued pin on this same integration -
+      // whether this run already moved it, left it in place, or never
+      // touched it - would fit there without breaking the 7-day rule.
+      // Walk every slot this run left open, earliest first, and for each
+      // one search the FULL list of this integration's URL-bearing pins
+      // (not just the ones already reassigned above) for any pin
+      // currently scheduled later than that slot whose URL would stay
+      // 7+ days clear of every other use. Only when nothing in that full
+      // list fits does the slot stay open.
+      const consumedMinutes = new Set<number>();
+      for (const post of onPreset) {
+        consumedMinutes.add(Math.floor(finalTargetMs.get(post.id)! / 60000));
+      }
+      const openSlots = freeSlots.filter(
+        (s) => !consumedMinutes.has(Math.floor(s / 60000))
+      );
+
+      if (openSlots.length > 0) {
+        const candidates = onPreset
+          .filter((post) => extractUrlFromSettings(post.settings))
+          .map((post) => ({
+            post,
+            url: extractUrlFromSettings(post.settings) as string,
+          }))
+          .sort(
+            (a, b) =>
+              finalTargetMs.get(a.post.id)! - finalTargetMs.get(b.post.id)!
+          );
+
+        for (const gap of openSlots) {
+          const candidateIdx = candidates.findIndex(({ post, url }) => {
+            const currentTarget = finalTargetMs.get(post.id)!;
+            if (currentTarget <= gap) {
+              // Only ever pull a pin earlier than where it already sits -
+              // never push one later as a side effect of this pass.
+              return false;
+            }
+            const anchors = (urlAnchors.get(url) || []).filter(
+              (t) => t !== currentTarget
+            );
+            return !anchors.some((t) => Math.abs(t - gap) < cooldownMs);
+          });
+
+          if (candidateIdx === -1) {
+            // No pin anywhere later in this integration's queue can use
+            // this slot without breaking the 7-day rule - leave it open.
+            continue;
+          }
+
+          const { post, url } = candidates[candidateIdx];
+          candidates.splice(candidateIdx, 1);
+
+          const oldTarget = finalTargetMs.get(post.id)!;
+          const anchorList = urlAnchors.get(url);
+          if (anchorList) {
+            const anchorIdx = anchorList.indexOf(oldTarget);
+            if (anchorIdx !== -1) {
+              anchorList.splice(anchorIdx, 1);
+            }
+          }
+          addUrlAnchor(url, gap);
+          finalTargetMs.set(post.id, gap);
+
+          const existingMoveIdx = postMoveIndex.get(post.id);
+          if (existingMoveIdx !== undefined) {
+            moves[existingMoveIdx].to = new Date(gap);
+          } else if (Math.abs(post.publishDate.getTime() - gap) > 60000) {
+            moves.push({
+              postId: post.id,
+              integrationId,
+              integrationName: integration?.name || integrationId,
+              from: post.publishDate,
+              to: new Date(gap),
+            });
+            postMoveIndex.set(post.id, moves.length - 1);
+          }
         }
       }
     }
