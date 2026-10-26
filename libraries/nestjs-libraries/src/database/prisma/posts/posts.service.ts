@@ -794,7 +794,15 @@ export class PostsService {
     return this._postRepository.countPostsFromDay(orgId, date);
   }
 
-  async createPost(orgId: string, body: CreatePostDto): Promise<any[]> {
+  async createPost(
+    orgId: string,
+    body: CreatePostDto,
+    // Compact (planQueueCompaction) is the one place meant to enforce the
+    // 7-day same-URL rule end to end. Batch scheduling passes true here so
+    // creating many posts back to back stays fast and leaves spacing to a
+    // follow-up Compact run instead of re-checking the cooldown per post.
+    skipUrlCooldown = false
+  ): Promise<any[]> {
     const postList = [];
     for (const post of body.posts) {
       const messages = (post.value || []).map((p) => p.content);
@@ -816,7 +824,8 @@ export class PostsService {
             : body.date,
           post,
           body.tags,
-          body.inter
+          body.inter,
+          skipUrlCooldown
         );
 
       if (!posts?.length) {
@@ -871,7 +880,16 @@ export class PostsService {
     return this.openaiService.separatePosts(content, len);
   }
 
-  async changeDate(orgId: string, id: string, date: string) {
+  async changeDate(
+    orgId: string,
+    id: string,
+    date: string,
+    // Compact (planQueueCompaction) is the one place meant to enforce the
+    // 7-day same-URL rule end to end. Clean Calendar's duplicate-schedule
+    // cleanup passes true here so it stays fast and leaves spacing to a
+    // follow-up Compact run instead of re-checking the cooldown per post.
+    skipUrlCooldown = false
+  ) {
     const getPostById = await this._postRepository.getPostById(id, orgId);
 
     await this._workerServiceProducer.delete('post', id);
@@ -888,7 +906,7 @@ export class PostsService {
       });
     }
 
-    return this._postRepository.changeDate(orgId, id, date);
+    return this._postRepository.changeDate(orgId, id, date, skipUrlCooldown);
   }
 
   async payout(id: string, url: string) {

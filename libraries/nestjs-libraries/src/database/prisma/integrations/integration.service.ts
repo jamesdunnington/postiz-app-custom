@@ -1239,7 +1239,11 @@ export class IntegrationService {
               await this._postsRepository.changeDate(
                 post.organizationId,
                 post.id,
-                nextSlot[0].toISOString()
+                nextSlot[0].toISOString(),
+                // Clean Calendar's duplicate cleanup moves many posts at
+                // once - leave URL spacing to a follow-up Compact run
+                // instead of enforcing the 7-day cooldown on each move.
+                true
               );
               
               // Delete old BullMQ job and add new one with correct delay

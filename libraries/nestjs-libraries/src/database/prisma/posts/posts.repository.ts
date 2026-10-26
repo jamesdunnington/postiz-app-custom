@@ -650,7 +650,17 @@ export class PostsRepository {
     return forward ?? backward ?? null;
   }
 
-  async changeDate(orgId: string, id: string, date: string) {
+  async changeDate(
+    orgId: string,
+    id: string,
+    date: string,
+    // Compact (planQueueCompaction) is the one place meant to enforce the
+    // 7-day same-URL rule end to end. Callers that reschedule many posts
+    // at once as a side effect of something else (duplicate/invalid-slot
+    // cleanup) pass true here so they stay fast and leave spacing to a
+    // follow-up Compact run instead of re-checking the cooldown per post.
+    skipUrlCooldown = false
+  ) {
     // Get the post to check its integration
     const post = await this._post.model.post.findUnique({
       where: { id },
@@ -736,7 +746,8 @@ export class PostsRepository {
 
       // Same destination URL must not repeat within 7 days anywhere in the
       // org's calendar - checked last so it has the final say on the date.
-      if (url && (await this.isUrlConflicting(orgId, url, finalPublishDate, id))) {
+      // Skipped entirely when the caller opted out (see skipUrlCooldown).
+      if (!skipUrlCooldown && url && (await this.isUrlConflicting(orgId, url, finalPublishDate, id))) {
         console.log(
           `[changeDate] URL cooldown conflict at ${dayjs(finalPublishDate).format('YYYY-MM-DD HH:mm')} ` +
           `for integration ${post.integrationId}. Rescheduling to the next slot 7+ days from this URL's other pins.`
@@ -815,7 +826,13 @@ export class PostsRepository {
     date: string,
     body: PostBody,
     tags: { value: string; label: string }[],
-    inter?: number
+    inter?: number,
+    // Compact (planQueueCompaction) is the one place meant to enforce the
+    // 7-day same-URL rule end to end. Batch scheduling creates many posts
+    // back to back and passes true here so each one doesn't re-query the
+    // cooldown window on creation - spacing is left to a follow-up Compact
+    // run instead.
+    skipUrlCooldown = false
   ) {
     const posts: Post[] = [];
     const uuid = uuidv4();
@@ -975,9 +992,10 @@ export class PostsRepository {
 
         // Same destination URL must not repeat within 7 days anywhere in
         // the org's calendar - checked last so it has the final say on the
-        // date, including when re-saving a previously errored pin.
+        // date, including when re-saving a previously errored pin. Skipped
+        // entirely when the caller opted out (see skipUrlCooldown).
         const candidateUrl = extractUrlFromSettings(body.settings);
-        if (candidateUrl && (await this.isUrlConflicting(orgId, candidateUrl, finalPublishDate, value.id))) {
+        if (!skipUrlCooldown && candidateUrl && (await this.isUrlConflicting(orgId, candidateUrl, finalPublishDate, value.id))) {
           console.log(
             `[createOrUpdatePost] URL cooldown conflict at ${dayjs(finalPublishDate).format('YYYY-MM-DD HH:mm')} ` +
             `for integration ${body.integration.id}. Rescheduling to the next slot 7+ days from this URL's other pins.`

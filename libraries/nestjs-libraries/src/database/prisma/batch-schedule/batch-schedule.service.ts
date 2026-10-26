@@ -167,7 +167,11 @@ export class BatchScheduleService {
               } as any,
             },
           ],
-        } as any
+        } as any,
+        // Batch scheduling creates many pins back to back - leave URL
+        // spacing to a follow-up Compact run instead of enforcing the
+        // 7-day cooldown on each one as it's created.
+        true
       );
 
       const postizPostId = result?.[0]?.postId;
