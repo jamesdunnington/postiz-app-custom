@@ -1556,48 +1556,72 @@ export class IntegrationService {
     const { logger } = Sentry;
     console.log('[COMPACT QUEUE] Starting queue compaction...');
 
+    // One pass can vacate a slot that only becomes fillable once that move
+    // has actually landed in the DB (the next pin that could use it isn't
+    // known until planQueueCompaction re-reads the new state) - so a
+    // single click has to loop until a pass finds nothing left to do,
+    // rather than leaving the user to keep re-clicking Compact themselves.
+    // The cap is just a runaway-loop guard; real queues converge in a
+    // handful of rounds.
+    const MAX_ROUNDS = 20;
+    let totalMoved = 0;
+    let totalPlanned = 0;
+
     try {
-      const moves = await this._postsRepository.planQueueCompaction(
-        orgId,
-        timezoneName
-      );
+      for (let round = 0; round < MAX_ROUNDS; round++) {
+        const moves = await this._postsRepository.planQueueCompaction(
+          orgId,
+          timezoneName
+        );
 
-      let moved = 0;
-      // Moves are ordered earliest-first per channel, so each post lands on a
-      // slot a previous post has already vacated.
-      for (const move of moves) {
-        try {
-          // Thread parts move with their root so the thread stays intact
-          await this._postsRepository.updatePostAndChildrenPublishDate(
-            move.postId,
-            move.to
-          );
+        if (moves.length === 0) {
+          break;
+        }
 
-          await this._workerServiceProducer.delete('post', move.postId);
-          this._workerServiceProducer.emit('post', {
-            id: move.postId,
-            options: {
-              delay: dayjs(move.to).diff(dayjs(), 'millisecond'),
-            },
-            payload: {
+        totalPlanned += moves.length;
+
+        // Moves are ordered earliest-first per channel, so each post lands on a
+        // slot a previous post has already vacated.
+        for (const move of moves) {
+          try {
+            // Thread parts move with their root so the thread stays intact
+            await this._postsRepository.updatePostAndChildrenPublishDate(
+              move.postId,
+              move.to
+            );
+
+            await this._workerServiceProducer.delete('post', move.postId);
+            this._workerServiceProducer.emit('post', {
               id: move.postId,
-            },
-          });
+              options: {
+                delay: dayjs(move.to).diff(dayjs(), 'millisecond'),
+              },
+              payload: {
+                id: move.postId,
+              },
+            });
 
-          moved++;
-          console.log(
-            `[COMPACT QUEUE] ✓ ${move.integrationName}: ${dayjs(move.from).format('YYYY-MM-DD HH:mm')} -> ${dayjs(move.to).format('YYYY-MM-DD HH:mm')}`
+            totalMoved++;
+            console.log(
+              `[COMPACT QUEUE] ✓ round ${round + 1}: ${move.integrationName}: ${dayjs(move.from).format('YYYY-MM-DD HH:mm')} -> ${dayjs(move.to).format('YYYY-MM-DD HH:mm')}`
+            );
+          } catch (err) {
+            logger.error(
+              `Failed to compact post ${move.postId}: ${err instanceof Error ? err.message : String(err)}`
+            );
+            console.error(`[COMPACT QUEUE] ❌ Error moving post ${move.postId}:`, err);
+          }
+        }
+
+        if (round === MAX_ROUNDS - 1) {
+          logger.warn(
+            `Queue compaction hit the ${MAX_ROUNDS}-round safety cap for org ${orgId} without fully converging`
           );
-        } catch (err) {
-          logger.error(
-            `Failed to compact post ${move.postId}: ${err instanceof Error ? err.message : String(err)}`
-          );
-          console.error(`[COMPACT QUEUE] ❌ Error moving post ${move.postId}:`, err);
         }
       }
 
-      logger.info(`Queue compaction complete: moved ${moved} posts`);
-      return { moved, planned: moves.length };
+      logger.info(`Queue compaction complete: moved ${totalMoved} posts`);
+      return { moved: totalMoved, planned: totalPlanned };
     } catch (err) {
       Sentry.captureException(err, {
         extra: { context: 'Failed to compact queue', orgId },
