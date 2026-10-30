@@ -31,6 +31,11 @@ export const CalendarContext = createContext({
   endDate: newDayjs().endOf('isoWeek').format('YYYY-MM-DD'),
   customer: null as string | null,
   selectedIntegrationId: null as string | null,
+  showOnlyErrors: false,
+  setShowOnlyErrors: ((show: boolean) => {
+    /** empty **/
+  }) as Dispatch<SetStateAction<boolean>>,
+  errorCount: 0,
   sets: [] as { name: string; id: string; content: string[] }[],
   signature: undefined as any,
   comments: [] as Array<{
@@ -127,6 +132,7 @@ export const CalendarWeekProvider: FC<{
   const [internalData, setInternalData] = useState([] as any[]);
   const [trendings] = useState<string[]>([]);
   const [selectedIntegrationId, setSelectedIntegrationId] = useState<string | null>(null);
+  const [showOnlyErrors, setShowOnlyErrors] = useState(false);
   const searchParams = useSearchParams();
   const [displaySaved, setDisplaySaved] = useCookie('calendar-display', 'week');
   const display = searchParams.get('display') || displaySaved;
@@ -252,12 +258,25 @@ export const CalendarWeekProvider: FC<{
   }, [posts]);
 
   // Filter posts by selected integration
-  const filteredPosts = useMemo(() => {
+  const integrationFilteredPosts = useMemo(() => {
     if (!selectedIntegrationId) {
       return internalData;
     }
     return internalData.filter((post: any) => post.integration?.id === selectedIntegrationId);
   }, [internalData, selectedIntegrationId]);
+
+  // Count errored posts within the current integration/date scope (independent of the error toggle itself)
+  const errorCount = useMemo(() => {
+    return integrationFilteredPosts.filter((post: any) => post.state === 'ERROR').length;
+  }, [integrationFilteredPosts]);
+
+  // Further filter down to only errored posts when the user toggles "show errors only"
+  const filteredPosts = useMemo(() => {
+    if (!showOnlyErrors) {
+      return integrationFilteredPosts;
+    }
+    return integrationFilteredPosts.filter((post: any) => post.state === 'ERROR');
+  }, [integrationFilteredPosts, showOnlyErrors]);
 
   return (
     <CalendarContext.Provider
@@ -274,6 +293,9 @@ export const CalendarWeekProvider: FC<{
         signature: sign,
         selectedIntegrationId,
         setSelectedIntegrationId,
+        showOnlyErrors,
+        setShowOnlyErrors,
+        errorCount,
       }}
     >
       {children}

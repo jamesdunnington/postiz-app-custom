@@ -223,6 +223,10 @@ export const Filters = () => {
     });
   }, [calendar]);
 
+  const toggleShowErrors = useCallback(() => {
+    calendar.setShowOnlyErrors(!calendar.showOnlyErrors);
+  }, [calendar]);
+
   const setCurrent = useCallback(
     (type: 'day' | 'week' | 'month') => () => {
       if (type === 'day') {
@@ -486,6 +490,38 @@ export const Filters = () => {
                 />
               </svg>
               {isCompacting ? 'Compacting...' : 'Compact'}
+            </div>
+            <div
+              onClick={toggleShowErrors}
+              className={clsx(
+                'py-[3px] px-[9px] flex justify-center items-center gap-[6px] rounded-[8px] transition-all cursor-pointer text-[14px] border',
+                calendar.showOnlyErrors
+                  ? 'bg-red-500 border-red-500 text-white'
+                  : 'hover:text-textItemFocused hover:bg-boxFocused bg-newBgColorInner border-newTableBorder'
+              )}
+              title={
+                calendar.showOnlyErrors
+                  ? 'Showing only errored pins — click to show all pins again'
+                  : 'Show only pins that failed to publish, so you can catch account issues early'
+              }
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+              >
+                <path
+                  d="M12 2L1 21H23L12 2ZM12 16C11.45 16 11 15.55 11 15V12C11 11.45 11.45 11 12 11C12.55 11 13 11.45 13 12V15C13 15.55 12.55 16 12 16ZM13 19H11V17H13V19Z"
+                  fill="currentColor"
+                />
+              </svg>
+              {calendar.showOnlyErrors
+                ? 'Showing Errors'
+                : calendar.errorCount > 0
+                ? `Errors (${calendar.errorCount})`
+                : 'Errors'}
             </div>
           </div>
         </div>
