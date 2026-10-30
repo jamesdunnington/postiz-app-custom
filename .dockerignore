@@ -21,3 +21,13 @@ dist
 .git
 .github
 reports
+.env
+.env.*
+!.env.example
+.ssh
+setting
+.tools
+.claude
+.woodpecker.yml
+.woodpecker.yml.full
+scripts
