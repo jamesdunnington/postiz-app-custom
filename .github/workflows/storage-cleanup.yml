@@ -1,0 +1,51 @@
+# Weekly GitHub storage housekeeping.
+#
+# Build caches now live in the container registry (see docker-build.yml:
+# cache-to: type=registry,...:buildcache), so the old Actions cache/artifact
+# churn no longer happens. This job keeps storage bounded over time:
+#   1. deletes workflow-run artifacts older than 7 days
+#   2. deletes untagged container package versions (superseded build-cache
+#      manifests and old layers) so registry storage does not creep up
+name: Storage cleanup
+
+on:
+  schedule:
+    - cron: '17 3 * * 0' # every Sunday 03:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+  packages: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    env:
+      PACKAGES: "postiz-app-custom"
+    steps:
+      - name: Delete artifacts older than 7 days
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cutoff=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          ids=$(gh api "repos/${{ github.repository }}/actions/artifacts?per_page=100" --paginate \
+                --jq ".artifacts[] | select(.created_at < \"$cutoff\") | .id")
+          for id in $ids; do
+            gh api -X DELETE "repos/${{ github.repository }}/actions/artifacts/$id" && echo "deleted artifact $id" || true
+          done
+
+      - name: Delete untagged container versions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          owner="${{ github.repository_owner }}"
+          for pkg in $PACKAGES; do
+            echo "::group::$pkg"
+            gh api "/users/$owner/packages/container/$pkg/versions?per_page=100" --paginate \
+              --jq '.[] | select((.metadata.container.tags // []) | length == 0) | .id' 2>/dev/null \
+              | while read -r vid; do
+                  [ -n "$vid" ] && { gh api -X DELETE "/users/$owner/packages/container/$pkg/versions/$vid" && echo "deleted $pkg version $vid" || true; }
+                done
+            echo "::endgroup::"
+          done
