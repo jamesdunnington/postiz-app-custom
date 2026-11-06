@@ -10,7 +10,15 @@ import { useT } from '@gitroom/react/translation/get.transation.service.client';
 const COMPARE_COLORS = ['#8b5cf6', '#14b8a6'];
 const INACTIVE_DOT_COLOR = '#6b7280';
 
-type PinSortField = 'impressions' | 'outboundClicks' | 'saves' | 'ctr';
+type PinSortField =
+  | 'pinCount'
+  | 'impressions'
+  | 'outboundClicks'
+  | 'saves'
+  | 'ctr';
+
+// Max destination URLs shown in the Top Pins table.
+const MAX_TOP_PIN_URLS = 50;
 
 export const RenderAnalytics: FC<{
   integration: Integration & { identifier?: string };
@@ -96,20 +104,34 @@ export const RenderAnalytics: FC<{
     const pins = pinterestTops?.topPins || [];
     const groups = new Map<
       string,
-      { url: string; impressions: number; outboundClicks: number; saves: number }
+      {
+        url: string;
+        // live pins on Pinterest pointing at this URL (null = unavailable)
+        pinCount: number | null;
+        impressions: number;
+        outboundClicks: number;
+        saves: number;
+      }
     >();
 
     pins.forEach((pin: any) => {
       const key = pin.destinationUrl || pin.url || pin.id;
       if (!key) return;
+      const livePinCount =
+        typeof pin.livePinCount === 'number' ? pin.livePinCount : null;
       const existing = groups.get(key);
       if (existing) {
         existing.impressions += pin.impressions || 0;
         existing.outboundClicks += pin.outboundClicks || 0;
         existing.saves += pin.saves || 0;
+        // every pin in the group shares the URL, hence the same live count
+        if (livePinCount !== null) {
+          existing.pinCount = Math.max(existing.pinCount ?? 0, livePinCount);
+        }
       } else {
         groups.set(key, {
           url: pin.destinationUrl || pin.url || '',
+          pinCount: livePinCount,
           impressions: pin.impressions || 0,
           outboundClicks: pin.outboundClicks || 0,
           saves: pin.saves || 0,
@@ -122,10 +144,12 @@ export const RenderAnalytics: FC<{
       ctr: row.impressions ? (row.outboundClicks / row.impressions) * 100 : 0,
     }));
 
-    return rows.sort((a, b) => {
-      const diff = (a[pinSortField] || 0) - (b[pinSortField] || 0);
-      return pinSortDir === 'asc' ? diff : -diff;
-    });
+    return rows
+      .sort((a, b) => {
+        const diff = (a[pinSortField] || 0) - (b[pinSortField] || 0);
+        return pinSortDir === 'asc' ? diff : -diff;
+      })
+      .slice(0, MAX_TOP_PIN_URLS);
   }, [pinterestTops, pinSortField, pinSortDir]);
 
   const togglePinSort = useCallback(
@@ -429,7 +453,7 @@ export const RenderAnalytics: FC<{
             <p className="text-sm text-gray-400">
               {t(
                 'top_pins_description',
-                'Aggregated by destination URL for the selected time frame, ranked by outbound click-through rate. Click a column header to sort.'
+                'Top 50 destination URLs for the selected time frame, ranked by outbound click-through rate. Pin Count is how many pins are live for that URL right now. Pins on secret or archived boards are excluded. Click a column header to sort.'
               )}
             </p>
           </div>
@@ -445,6 +469,7 @@ export const RenderAnalytics: FC<{
                   </th>
                   {(
                     [
+                      ['pinCount', t('pin_count', 'Pin Count')],
                       ['impressions', t('impressions', 'Impressions')],
                       ['outboundClicks', t('outbound_clicks', 'Outbound Clicks')],
                       ['saves', t('saves', 'Saves')],
@@ -486,6 +511,13 @@ export const RenderAnalytics: FC<{
                           {t('untitled_pin', 'Untitled Pin')}
                         </span>
                       )}
+                    </td>
+                    <td className="px-3 py-3 text-right whitespace-nowrap">
+                      {row.pinCount === null
+                        ? '–'
+                        : `${row.pinCount.toLocaleString()}${
+                            pinterestTops?.livePinsTruncated ? '+' : ''
+                          }`}
                     </td>
                     <td className="px-3 py-3 text-right font-medium whitespace-nowrap">
                       {formatNumber(row.impressions || 0)}

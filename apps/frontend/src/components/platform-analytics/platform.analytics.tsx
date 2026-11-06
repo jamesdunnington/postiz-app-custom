@@ -36,7 +36,7 @@ export const PlatformAnalytics = () => {
   const { disableXAnalytics } = useVariables();
 
   const [current, setCurrent] = useState(0);
-  const [key, setKey] = useState(30);
+  const [key, setKey] = useState(90);
   const [refresh, setRefresh] = useState(false);
   const [collapseMenu, setCollapseMenu] = useCookie('collapseMenu', '0');
   const [customStartDate, setCustomStartDate] = useState(
@@ -157,6 +157,11 @@ export const PlatformAnalytics = () => {
     }
     if (options.find((p) => p.key === key)) {
       return key;
+    }
+    // Channels without a 90 day option (e.g. Instagram, Threads) keep the
+    // previous 30 day default instead of dropping to 7 days.
+    if (options.find((p) => p.key === 30)) {
+      return 30;
     }
     return options[0]?.key;
   }, [key, currentIntegration]);
@@ -308,6 +313,7 @@ export const PlatformAnalytics = () => {
                   name="date"
                   disableForm={true}
                   hideErrors={true}
+                  value={keys}
                   onChange={(e) => setKey(+e.target.value)}
                 >
                   {options.map((option) => (

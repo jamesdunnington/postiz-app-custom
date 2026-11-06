@@ -30,6 +30,7 @@ dayjs.extend(utc);
 
 @Injectable()
 export class IntegrationService {
+  private static pinterestTopsInflight = new Map<string, Promise<any>>();
   private storage = UploadFactory.createStorage();
   constructor(
     private _integrationRepository: IntegrationRepository,
@@ -746,7 +747,7 @@ export class IntegrationService {
       date === '-1' && startDate && endDate
         ? `custom:${startDate}:${endDate}`
         : date;
-    const cacheKey = `pinterest-tops:${org.id}:${integration}:${cacheKeySuffix}`;
+    const cacheKey = `pinterest-tops-v2:${org.id}:${integration}:${cacheKeySuffix}`;
 
     const cached = await ioRedis.get(cacheKey);
     if (cached) {
@@ -754,31 +755,47 @@ export class IntegrationService {
     }
 
     if (integrationProvider.getTopBoardsAndPins) {
-      try {
-        const result = await integrationProvider.getTopBoardsAndPins(
-          getIntegration.internalId,
-          getIntegration.token,
-          date === '-1' ? -1 : +date,
-          startDate,
-          endDate
-        );
-
-        await ioRedis.set(
-          cacheKey,
-          JSON.stringify(result),
-          'EX',
-          !process.env.NODE_ENV || process.env.NODE_ENV === 'development'
-            ? 1
-            : 3600
-        );
-
-        return result;
-      } catch (err) {
-        Sentry.logger.warn('Failed to fetch Pinterest tops', {
-          integration,
-          error: err instanceof Error ? err.message : String(err),
-        });
+      // Identical concurrent requests (double renders, several tabs) share one
+      // upstream fetch instead of each hitting Pinterest.
+      const inflight = IntegrationService.pinterestTopsInflight.get(cacheKey);
+      if (inflight) {
+        return inflight;
       }
+
+      const request = (async () => {
+        try {
+          const result = await integrationProvider.getTopBoardsAndPins(
+            getIntegration.internalId,
+            getIntegration.token,
+            date === '-1' ? -1 : +date,
+            startDate,
+            endDate
+          );
+
+          const isDev =
+            !process.env.NODE_ENV || process.env.NODE_ENV === 'development';
+          // Real results are cached for 6 hours (Pinterest's top-pin data moves
+          // slowly and every request costs rate-limited API calls). Empty
+          // results (error / rate limit) are only cached for 5 minutes so a
+          // transient failure is not pinned for hours but is not hammered either.
+          const ttl = isDev ? 1 : result?.topPins?.length ? 6 * 3600 : 300;
+
+          await ioRedis.set(cacheKey, JSON.stringify(result), 'EX', ttl);
+
+          return result;
+        } catch (err) {
+          Sentry.logger.warn('Failed to fetch Pinterest tops', {
+            integration,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          return { topBoards: [], topPins: [] };
+        } finally {
+          IntegrationService.pinterestTopsInflight.delete(cacheKey);
+        }
+      })();
+
+      IntegrationService.pinterestTopsInflight.set(cacheKey, request);
+      return request;
     }
 
     return { topBoards: [], topPins: [] };

@@ -16,6 +16,8 @@ import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
 import * as Sentry from '@sentry/nextjs';
 import { BadBody } from '@gitroom/nestjs-libraries/integrations/social.abstract';
+import { concurrency } from '@gitroom/helpers/utils/concurrency.service';
+import { ioRedis } from '@gitroom/nestjs-libraries/redis/redis.service';
 
 @Rules(
   'Pinterest requires at least one media, if posting a video, you must have two attachment, one for video, one for the cover picture, When posting a video, there can be only one'
@@ -633,18 +635,281 @@ export class PinterestProvider
     return this.parseAnalyticsMetrics(daily_metrics);
   }
 
+  // ---------------------------------------------------------------------
+  // Top Pins (Analytics tab)
+  //
+  // Rate-limit strategy — every call below goes through the SAME shared
+  // Bottleneck queue as posting (1 request/second, max 3 in flight, kept in
+  // Redis), so analytics can never burst on top of scheduled posts:
+  //   * top_pins is called at most twice (sorted by impressions and by
+  //     outbound clicks — Pinterest caps one response at 50 pins, and the
+  //     table groups pins by URL, so two lists get closer to 50 distinct URLs).
+  //   * Pin title / image / destination link and the "live pins per URL"
+  //     count come from paginated GET /pins (250 per page) instead of one
+  //     GET /pins/{id} per top pin — ~1 call per 250 pins rather than 1 per pin.
+  //   * That pin listing is cached in Redis for 6 hours and shared by every
+  //     date range, so switching 7/28/30/90 days never re-lists the pins.
+  //   * The first 429 (or an almost-empty x-ratelimit-remaining) stops all
+  //     further calls and puts the account in a 10 minute cool-down.
+  // ---------------------------------------------------------------------
+  private static readonly TOP_PINS_PER_QUERY = 50; // Pinterest's max num_of_pins
+  private static readonly MAX_LIVE_PIN_PAGES = 20; // 20 x 250 = 5000 pins
+  private static readonly MAX_PIN_DETAIL_FALLBACKS = 10;
+  private static readonly BACKOFF_SECONDS = 600;
+
+  private static normalizeLink(link?: string): string {
+    if (!link) {
+      return '';
+    }
+    const trimmed = link.trim();
+    try {
+      const url = new URL(trimmed);
+      url.hash = '';
+      return (
+        url.protocol +
+        '//' +
+        url.host.toLowerCase() +
+        url.pathname.replace(/\/+$/, '') +
+        url.search
+      );
+    } catch {
+      return trimmed.replace(/#.*$/, '').replace(/\/+$/, '');
+    }
+  }
+
+  private async queuedGet(url: string, accessToken: string) {
+    const res = await concurrency<Response>(
+      this.identifier,
+      this.maxConcurrentJob,
+      () =>
+        fetch(url, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+        })
+    );
+
+    if (!res) {
+      return { ok: false, status: 0, backOff: false, json: null as any };
+    }
+
+    const remainingHeader =
+      res.headers.get('x-ratelimit-remaining') ??
+      res.headers.get('x-userratelimit-remaining');
+    const remaining =
+      remainingHeader === null ? NaN : Number(remainingHeader);
+    const rateLimited = res.status === 429;
+
+    let json: any = null;
+    try {
+      json = await res.json();
+    } catch {
+      json = null;
+    }
+
+    return {
+      ok: res.ok,
+      status: res.status,
+      // Stop issuing further calls when Pinterest says we are (nearly) out.
+      backOff: rateLimited || (Number.isFinite(remaining) && remaining <= 5),
+      json,
+    };
+  }
+
+  private async startBackoff(id: string) {
+    await ioRedis
+      .set(
+        `pinterest-backoff:${id}`,
+        '1',
+        'EX',
+        PinterestProvider.BACKOFF_SECONDS
+      )
+      .catch(() => undefined);
+  }
+
+  // IDs of the account's PUBLIC, NON-ARCHIVED boards. Pins on secret or
+  // archived boards are excluded from Top Pins and from the live Pin Count.
+  // GET /boards leaves archived boards out unless include_archived=true is
+  // passed, and privacy=PUBLIC leaves out secret/protected boards.
+  // Returns null when the list could not be fetched completely.
+  private async getPublicBoardIds(
+    id: string,
+    accessToken: string,
+    cacheTtl: number
+  ): Promise<Set<string> | null> {
+    const cacheKey = `pinterest-public-boards:${id}`;
+    const cached = await ioRedis.get(cacheKey).catch(() => null);
+    if (cached) {
+      try {
+        return new Set<string>(JSON.parse(cached));
+      } catch {
+        // fall through and refetch
+      }
+    }
+
+    const ids: string[] = [];
+    let bookmark: string | undefined;
+    let pages = 0;
+
+    while (true) {
+      const response = await this.queuedGet(
+        `https://api.pinterest.com/v5/boards?privacy=PUBLIC&page_size=250${
+          bookmark ? `&bookmark=${encodeURIComponent(bookmark)}` : ''
+        }`,
+        accessToken
+      );
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          await this.startBackoff(id);
+        }
+        return null;
+      }
+
+      for (const board of response.json?.items || []) {
+        if (board?.id) {
+          ids.push(String(board.id));
+        }
+      }
+
+      bookmark = response.json?.bookmark || undefined;
+      pages++;
+
+      if (response.backOff) {
+        await this.startBackoff(id);
+        // an incomplete board list would wrongly hide real pins
+        return bookmark ? null : this.cacheBoardIds(cacheKey, ids, cacheTtl);
+      }
+      if (!bookmark) {
+        break;
+      }
+      if (pages >= PinterestProvider.MAX_LIVE_PIN_PAGES) {
+        return null;
+      }
+    }
+
+    return this.cacheBoardIds(cacheKey, ids, cacheTtl);
+  }
+
+  private async cacheBoardIds(key: string, ids: string[], ttl: number) {
+    await ioRedis.set(key, JSON.stringify(ids), 'EX', ttl).catch(() => undefined);
+    return new Set<string>(ids);
+  }
+
+  private async getLivePins(
+    id: string,
+    accessToken: string,
+    cacheTtl: number
+  ): Promise<{
+    pins: {
+      id: string;
+      link: string;
+      title: string;
+      image: string;
+      board: string;
+    }[];
+    truncated: boolean;
+  } | null> {
+    const cacheKey = `pinterest-live-pins-v2:${id}`;
+    const cached = await ioRedis.get(cacheKey).catch(() => null);
+    if (cached) {
+      try {
+        return JSON.parse(cached);
+      } catch {
+        // fall through and refetch
+      }
+    }
+
+    const pins: {
+      id: string;
+      link: string;
+      title: string;
+      image: string;
+      board: string;
+    }[] = [];
+    let bookmark: string | undefined;
+    let pages = 0;
+    let truncated = false;
+    let failed = false;
+
+    while (true) {
+      const response = await this.queuedGet(
+        `https://api.pinterest.com/v5/pins?page_size=250${
+          bookmark ? `&bookmark=${encodeURIComponent(bookmark)}` : ''
+        }`,
+        accessToken
+      );
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          await this.startBackoff(id);
+        }
+        failed = true;
+        truncated = true;
+        break;
+      }
+
+      for (const pin of response.json?.items || []) {
+        pins.push({
+          id: pin.id,
+          link: pin.link || '',
+          title: (pin.title || pin.description || '').substring(0, 60),
+          image:
+            pin.media?.images?.['150x150']?.url ||
+            pin.media?.images?.['400x300']?.url ||
+            '',
+          board: pin.board_id ? String(pin.board_id) : '',
+        });
+      }
+
+      bookmark = response.json?.bookmark || undefined;
+      pages++;
+
+      if (response.backOff) {
+        await this.startBackoff(id);
+        truncated = !!bookmark;
+        failed = true;
+        break;
+      }
+      if (!bookmark) {
+        break;
+      }
+      if (pages >= PinterestProvider.MAX_LIVE_PIN_PAGES) {
+        truncated = true;
+        break;
+      }
+    }
+
+    if (!pins.length) {
+      return null;
+    }
+
+    const result = { pins, truncated };
+    // A listing cut short by an error is only kept briefly so it is retried soon.
+    await ioRedis
+      .set(
+        cacheKey,
+        JSON.stringify(result),
+        'EX',
+        failed ? Math.min(cacheTtl, 600) : cacheTtl
+      )
+      .catch(() => undefined);
+    return result;
+  }
+
   async getTopBoardsAndPins(
     id: string,
     accessToken: string,
     date: number,
     startDate?: string,
     endDate?: string
-  ): Promise<{ topBoards: any[]; topPins: any[] }> {
-    const headers = {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    };
-
+  ): Promise<{
+    topBoards: any[];
+    topPins: any[];
+    livePinsTruncated?: boolean;
+  }> {
     const since =
       date === -1 && startDate
         ? startDate
@@ -652,66 +917,189 @@ export class PinterestProvider
     const until =
       date === -1 && endDate ? endDate : dayjs().format('YYYY-MM-DD');
 
-    // Fetch top 10 pins using the Pinterest API v5 top_pins_analytics endpoint
-    let topPins: any[] = [];
-    try {
-      const topPinsResponse = await (
-        await fetch(
-          `https://api.pinterest.com/v5/user_account/analytics/top_pins?start_date=${since}&end_date=${until}&sort_by=IMPRESSION&from_claimed_content=BOTH&pin_format=ALL&app_types=ALL&content_type=ALL&source=ALL&metric_types=IMPRESSION,PIN_CLICK,OUTBOUND_CLICK,SAVE&num_of_pins=10`,
-          { method: 'GET', headers }
-        )
-      ).json();
+    const isDev =
+      !process.env.NODE_ENV || process.env.NODE_ENV === 'development';
+    const cacheTtl = isDev ? 1 : 6 * 60 * 60;
 
-      if (topPinsResponse?.pins) {
-        // The top_pins endpoint returns metrics only (no title/image/destination link).
-        // Fetch full pin details for each pin to get those.
-        const pinDetailsPromises = topPinsResponse.pins.map(async (pin: any) => {
-          const pinId = pin.pin_id || pin.id;
-          let title = pin.title || '';
-          let imageUrl = pin.media?.images?.['150x150']?.url || pin.image_medium_url || '';
-          let description = pin.description || '';
-          let destinationUrl = pin.link || '';
-
-          if (pinId) {
-            try {
-              const pinDetail = await (
-                await fetch(`https://api.pinterest.com/v5/pins/${pinId}`, {
-                  method: 'GET',
-                  headers,
-                })
-              ).json();
-              title = title || pinDetail.title || pinDetail.description?.substring(0, 60) || '';
-              description = description || pinDetail.description || '';
-              imageUrl = imageUrl
-                || pinDetail.media?.images?.['150x150']?.url
-                || pinDetail.media?.images?.['400x300']?.url
-                || pinDetail.media?.images?.originals?.url
-                || '';
-              destinationUrl = destinationUrl || pinDetail.link || '';
-            } catch {
-              // If pin detail fetch fails, use what we have
-            }
-          }
-
-          return {
-            id: pinId,
-            title: title || description?.substring(0, 60) || '',
-            imageUrl,
-            url: pinId ? `https://www.pinterest.com/pin/${pinId}` : '',
-            destinationUrl,
-            impressions: pin.metrics?.IMPRESSION || 0,
-            pinClicks: pin.metrics?.PIN_CLICK || 0,
-            outboundClicks: pin.metrics?.OUTBOUND_CLICK || 0,
-            saves: pin.metrics?.SAVE || 0,
-          };
-        });
-
-        topPins = await Promise.all(pinDetailsPromises);
-      }
-    } catch (err) {
-      // top_pins_analytics may not be available for all account types
+    // Cool-down after a previous 429 — do not touch Pinterest at all.
+    if (await ioRedis.get(`pinterest-backoff:${id}`).catch(() => null)) {
+      Sentry.logger.warn(
+        'Skipping Pinterest top pins, in rate-limit cool-down',
+        { id }
+      );
+      return { topBoards: [], topPins: [] };
     }
 
-    return { topBoards: [], topPins };
+    try {
+      // 1) Top pins by impressions, then by outbound clicks (union, de-duplicated).
+      const topPinMetrics = new Map<string, any>();
+      let backOff = false;
+
+      for (const sortBy of ['IMPRESSION', 'OUTBOUND_CLICK']) {
+        if (backOff) {
+          break;
+        }
+        const response = await this.queuedGet(
+          `https://api.pinterest.com/v5/user_account/analytics/top_pins?start_date=${since}&end_date=${until}&sort_by=${sortBy}&from_claimed_content=BOTH&pin_format=ALL&app_types=ALL&content_type=ALL&source=ALL&metric_types=IMPRESSION,PIN_CLICK,OUTBOUND_CLICK,SAVE&num_of_pins=${PinterestProvider.TOP_PINS_PER_QUERY}`,
+          accessToken
+        );
+
+        if (!response.ok) {
+          Sentry.logger.warn('Pinterest top_pins request failed', {
+            status: response.status,
+            sortBy,
+          });
+          if (response.status === 429) {
+            await this.startBackoff(id);
+          }
+          backOff = true;
+          continue;
+        }
+
+        for (const pin of response.json?.pins || []) {
+          const pinId = pin.pin_id || pin.id;
+          if (pinId && !topPinMetrics.has(pinId)) {
+            topPinMetrics.set(pinId, pin);
+          }
+        }
+
+        if (response.backOff) {
+          await this.startBackoff(id);
+          backOff = true;
+        }
+      }
+
+      if (!topPinMetrics.size) {
+        return { topBoards: [], topPins: [] };
+      }
+
+      // Secret and archived boards must not appear in the results, so every
+      // pin has to be confirmed to sit on a public, non-archived board. If we
+      // cannot confirm that (rate limit / API error), show nothing rather than
+      // risk showing pins from those boards. The short failure cache and the
+      // cool-down keep this from hammering Pinterest.
+      if (backOff) {
+        return { topBoards: [], topPins: [] };
+      }
+
+      // 2) Public board ids + live pin listing: gives link/title/image for the
+      //    top pins AND how many live pins point at each destination URL.
+      const publicBoards = await this.getPublicBoardIds(
+        id,
+        accessToken,
+        cacheTtl
+      );
+      const live = publicBoards
+        ? await this.getLivePins(id, accessToken, cacheTtl)
+        : null;
+
+      if (!publicBoards || !live) {
+        Sentry.logger.warn(
+          'Pinterest top pins: could not verify board privacy, returning none',
+          { id }
+        );
+        return { topBoards: [], topPins: [] };
+      }
+
+      const listedIds = new Set<string>();
+      const publicById = new Map<
+        string,
+        { link: string; title: string; image: string }
+      >();
+      const liveCounts = new Map<string, number>();
+      for (const pin of live.pins) {
+        listedIds.add(pin.id);
+        if (!pin.board || !publicBoards.has(pin.board)) {
+          continue; // secret or archived board
+        }
+        publicById.set(pin.id, pin);
+        const key = PinterestProvider.normalizeLink(pin.link);
+        if (key) {
+          liveCounts.set(key, (liveCounts.get(key) || 0) + 1);
+        }
+      }
+
+      // 3) Top pins missing from a truncated listing: a small, sequential,
+      //    capped number of single-pin lookups (each also checked against the
+      //    public board list).
+      let fallbacks = 0;
+      const topPins: any[] = [];
+      for (const [pinId, pin] of topPinMetrics) {
+        let details = publicById.get(pinId);
+
+        if (!details) {
+          // Listed but on a secret/archived board -> excluded. Not listed at
+          // all and the listing is complete -> deleted/hidden -> excluded.
+          if (
+            listedIds.has(pinId) ||
+            !live.truncated ||
+            backOff ||
+            fallbacks >= PinterestProvider.MAX_PIN_DETAIL_FALLBACKS
+          ) {
+            continue;
+          }
+
+          fallbacks++;
+          const detail = await this.queuedGet(
+            `https://api.pinterest.com/v5/pins/${pinId}`,
+            accessToken
+          );
+          if (detail.status === 429 || detail.backOff) {
+            await this.startBackoff(id);
+            backOff = true;
+          }
+          const board = detail.json?.board_id
+            ? String(detail.json.board_id)
+            : '';
+          if (!detail.ok || !board || !publicBoards.has(board)) {
+            continue;
+          }
+          details = {
+            link: detail.json?.link || '',
+            title: (
+              detail.json?.title ||
+              detail.json?.description ||
+              ''
+            ).substring(0, 60),
+            image:
+              detail.json?.media?.images?.['150x150']?.url ||
+              detail.json?.media?.images?.['400x300']?.url ||
+              '',
+          };
+        }
+
+        const destinationUrl = details.link || pin.link || '';
+        topPins.push({
+          id: pinId,
+          title: details.title || pin.title || '',
+          imageUrl:
+            details.image ||
+            pin.media?.images?.['150x150']?.url ||
+            pin.image_medium_url ||
+            '',
+          url: `https://www.pinterest.com/pin/${pinId}`,
+          destinationUrl,
+          livePinCount:
+            liveCounts.get(PinterestProvider.normalizeLink(destinationUrl)) ||
+            0,
+          impressions: pin.metrics?.IMPRESSION || 0,
+          pinClicks: pin.metrics?.PIN_CLICK || 0,
+          outboundClicks: pin.metrics?.OUTBOUND_CLICK || 0,
+          saves: pin.metrics?.SAVE || 0,
+        });
+      }
+
+      return {
+        topBoards: [],
+        topPins,
+        livePinsTruncated: live.truncated,
+      };
+    } catch (err) {
+      // top_pins_analytics may not be available for all account types
+      Sentry.logger.warn('Pinterest top pins failed', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return { topBoards: [], topPins: [] };
+    }
   }
 }
